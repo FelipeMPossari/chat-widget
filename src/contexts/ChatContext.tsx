@@ -77,7 +77,13 @@ export function ChatProvider({ children }: ChatProviderProps) {
   const [error, setError] = useState('');
   const toggleOpen = useCallback(() => setIsOpen((current) => !current), []);
 
-  const settings = bootstrap?.settings ?? DEFAULT_SETTINGS;
+  const settings = useMemo<WidgetSettings>(
+    () => ({
+      ...DEFAULT_SETTINGS,
+      ...(bootstrap?.settings ?? {}),
+    }),
+    [bootstrap?.settings]
+  );
   const canUseConversationList =
     bootstrap?.mode === 'authenticated' || settings.allowMultipleConversations;
 
@@ -118,17 +124,21 @@ export function ChatProvider({ children }: ChatProviderProps) {
       setConversations(list);
 
       const openConversation = list.find((conversation) => conversation.status === 'open');
+      const responseSettings = {
+        ...DEFAULT_SETTINGS,
+        ...(response.settings ?? {}),
+      };
       const responseAllowsConversationList =
-        response.mode === 'authenticated' || response.settings.allowMultipleConversations;
+        response.mode === 'authenticated' || responseSettings.allowMultipleConversations;
 
-      if (!response.settings.requireIdentity && !openConversation && !responseAllowsConversationList) {
+      if (!responseSettings.requireIdentity && !openConversation && !responseAllowsConversationList) {
         const created = await api.createConversation({});
         setConversations([created]);
         setActiveConversation(created);
         return;
       }
 
-      if (openConversation && !response.settings.allowMultipleConversations) {
+      if (openConversation && !responseSettings.allowMultipleConversations) {
         setActiveConversation(openConversation);
       }
     } catch (err) {
@@ -259,7 +269,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
   useRealtime({
     api,
     chatGuid: activeConversation?.chatGuid,
-    intervalMs: bootstrap?.settings.pollingIntervalMs,
+    intervalMs: settings.pollingIntervalMs,
     onMessages: setMessages,
   });
 

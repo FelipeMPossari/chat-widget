@@ -54,6 +54,7 @@ export class ApiClient {
 
     if (this.token) {
       headers.set('Authorization', `Bearer ${this.token}`);
+      headers.set('riosoft-token', this.token);
     }
 
     const response = await fetch(`${this.apiBaseUrl}/api/ChatWidget${path}`, {

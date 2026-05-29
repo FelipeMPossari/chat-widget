@@ -16,6 +16,7 @@ import { ApiClient } from './apiClient';
 import {
   mapChatListItemDtoToConversation,
   mapMessageDtoToChatMessage,
+  readDtoValue,
 } from './chatMappers';
 import { MockChatApi } from './mockChatApi';
 
@@ -47,34 +48,50 @@ class HttpChatApi implements IChatApi {
   ) {}
 
   async bootstrap(request: BootstrapRequest): Promise<BootstrapResponse> {
-    const response = await this.apiClient.post<BootstrapResponse>('/bootstrap', request);
-    if (!this.authToken && response.token) {
-      this.apiClient.setToken(response.token);
+    const response = await this.apiClient.post<unknown>(
+      '/StartChatSession',
+      request
+    );
+    const bootstrap = normalizeBootstrapResponse(response, request.visitorId);
+
+    if (!this.authToken && bootstrap.token) {
+      this.apiClient.setToken(bootstrap.token);
     }
-    return response;
+
+    return bootstrap;
   }
 
   async listConversations(): Promise<ConversationSummary[]> {
-    const items = await this.apiClient.get<XChannelChatListItemDto[]>('/conversations');
+    const items = await this.apiClient.post<XChannelChatListItemDto[]>(
+      '/LoadConversations',
+      {}
+    );
     return (items ?? []).map(mapChatListItemDtoToConversation);
   }
 
   async createConversation(request: CreateConversationRequest): Promise<ConversationSummary> {
-    const item = await this.apiClient.post<XChannelChatListItemDto>('/conversations', request);
+    const item = await this.apiClient.post<XChannelChatListItemDto>(
+      '/CreateConversation',
+      request
+    );
     return mapChatListItemDtoToConversation(item);
   }
 
   async listMessages(chatGuid: string): Promise<ChatMessage[]> {
-    const messages = await this.apiClient.get<XChannelMessageDto[]>(
-      `/conversations/${chatGuid}/messages`
-    );
+    const messages = await this.apiClient.post<XChannelMessageDto[]>('/LoadMessages', {
+      chatGuid,
+      take: 50,
+    });
     return (messages ?? []).map((message) => this.mapMessage(message));
   }
 
   async sendMessage(chatGuid: string, request: SendMessageRequest): Promise<ChatMessage> {
     const message = await this.apiClient.post<XChannelMessageDto>(
-      `/conversations/${chatGuid}/messages`,
-      request
+      '/SendMessage',
+      {
+        chatGuid,
+        ...request,
+      }
     );
     return this.mapMessage(message);
   }
@@ -84,7 +101,7 @@ class HttpChatApi implements IChatApi {
     request: UploadAttachmentRequest
   ): Promise<ChatMessage> {
     const message = await this.apiClient.upload<XChannelMessageDto>(
-      `/conversations/${chatGuid}/attachments`,
+      `/UploadAttachment?chatGuid=${encodeURIComponent(chatGuid)}`,
       request.file
     );
     return this.mapMessage(message);
@@ -92,7 +109,8 @@ class HttpChatApi implements IChatApi {
 
   async closeConversation(chatGuid: string): Promise<ConversationSummary> {
     const item = await this.apiClient.post<XChannelChatListItemDto>(
-      `/conversations/${chatGuid}/close`
+      '/CloseConversation',
+      { chatGuid }
     );
     return mapChatListItemDtoToConversation(item);
   }
@@ -103,4 +121,28 @@ class HttpChatApi implements IChatApi {
       resolveAttachmentUrl: (url) => this.apiClient.resolveUrl(url),
     });
   }
+}
+
+function normalizeBootstrapResponse(
+  response: unknown,
+  fallbackVisitorId: string
+): BootstrapResponse {
+  const settings = readDtoValue<Record<string, unknown>>(response, 'Settings') ?? {};
+  const mode = `${readDtoValue<string>(response, 'Mode') ?? 'anonymous'}`.toLowerCase();
+
+  return {
+    token: readDtoValue<string>(response, 'Token') ?? '',
+    visitorId: readDtoValue<string>(response, 'VisitorId') ?? fallbackVisitorId,
+    mode: mode === 'authenticated' ? 'authenticated' : 'anonymous',
+    settings: {
+      title: readDtoValue<string>(settings, 'Title') ?? 'Atendimento XChannel',
+      subtitle: readDtoValue<string>(settings, 'Subtitle') ?? 'Fale com nossa equipe',
+      themeColor: readDtoValue<string>(settings, 'ThemeColor') ?? '#2688c7',
+      requireIdentity: readDtoValue<boolean>(settings, 'RequireIdentity') ?? true,
+      allowAttachments: readDtoValue<boolean>(settings, 'AllowAttachments') ?? true,
+      allowMultipleConversations:
+        readDtoValue<boolean>(settings, 'AllowMultipleConversations') ?? false,
+      pollingIntervalMs: readDtoValue<number>(settings, 'PollingIntervalMs') ?? 5000,
+    },
+  };
 }

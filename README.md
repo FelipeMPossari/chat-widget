@@ -45,7 +45,7 @@ Componentes chamam hooks. Hooks/contextos coordenam estado e services. Estilos s
 ```
 
 `data-auth-token` e enviado em todas as chamadas HTTP como `Authorization: Bearer <token>`,
-incluindo `POST /api/ChatWidget/bootstrap`. O XChannel deve usar esse token para
+incluindo `POST /api/ChatWidget/StartChatSession`. O XChannel deve usar esse token para
 identificar se a sessao pertence a um visitante anonimo, landing page, CRM ou outro
 sistema integrado. `data-token` tambem e aceito como alias. `data-user-token`
 continua funcionando como fallback por compatibilidade.
@@ -64,7 +64,7 @@ continua funcionando como fallback por compatibilidade.
 ></script>
 ```
 
-O modo final do widget nao e decidido pelo front. A resposta de `bootstrap` deve
+O modo final do widget nao e decidido pelo front. A resposta de `StartChatSession` deve
 informar se a sessao e `anonymous` ou `authenticated` e quais recursos estao
 habilitados.
 
@@ -78,14 +78,14 @@ window.XChannelWebChat.init({
 });
 ```
 
-## Contrato REST esperado
+## Contrato esperado
 
-- `POST /api/ChatWidget/bootstrap`
-- `GET /api/ChatWidget/conversations`
-- `POST /api/ChatWidget/conversations`
-- `GET /api/ChatWidget/conversations/{chatGuid}/messages`
-- `POST /api/ChatWidget/conversations/{chatGuid}/messages`
-- `POST /api/ChatWidget/conversations/{chatGuid}/attachments`
-- `POST /api/ChatWidget/conversations/{chatGuid}/close`
+- `POST /api/ChatWidget/StartChatSession`
+- `POST /api/ChatWidget/LoadConversations`
+- `POST /api/ChatWidget/CreateConversation`
+- `POST /api/ChatWidget/LoadMessages`
+- `POST /api/ChatWidget/SendMessage`
+- `POST /api/ChatWidget/UploadAttachment`
+- `POST /api/ChatWidget/CloseConversation`
 
 Enquanto o backend nao existir, use `data-demo-mode="true"` ou omita `data-api-base-url` para rodar com mock local.
