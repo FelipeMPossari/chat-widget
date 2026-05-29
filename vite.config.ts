@@ -6,11 +6,10 @@ export default defineConfig({
   build: {
     copyPublicDir: false,
     lib: {
-      entry: 'src/index.tsx',
+      entry: 'src/main.tsx',
       name: 'XChannelWebChat',
       formats: ['iife'],
       fileName: () => 'xchannel-webchat.js',
     },
   },
 });
-

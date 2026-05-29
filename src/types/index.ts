@@ -15,6 +15,7 @@ export interface WidgetUserContext {
 
 export interface ChatWidgetConfig {
   widgetKey: string;
+  authToken?: string;
   apiBaseUrl?: string;
   demoMode: boolean;
   locale: string;
@@ -34,14 +35,6 @@ export interface WidgetSettings {
   pollingIntervalMs: number;
 }
 
-export interface BootstrapRequest {
-  widgetKey: string;
-  visitorId: string;
-  sourceSystem?: string;
-  sourceUrl: string;
-  user?: WidgetUserContext;
-}
-
 export interface BootstrapResponse {
   token: string;
   visitorId: string;
@@ -56,6 +49,7 @@ export interface ConversationSummary {
   lastMessage?: string;
   lastMessageAt?: string;
   unreadCount: number;
+  raw?: unknown;
 }
 
 export interface ChatAttachment {
@@ -74,20 +68,8 @@ export interface ChatMessage {
   text?: string;
   attachments?: ChatAttachment[];
   createdAt: string;
-}
-
-export interface CreateConversationRequest {
-  subject?: string;
-  visitorName?: string;
-  visitorEmail?: string;
-}
-
-export interface SendMessageRequest {
-  text: string;
-}
-
-export interface UploadAttachmentRequest {
-  file: File;
+  status?: string;
+  raw?: unknown;
 }
 
 export interface WidgetController {
@@ -108,4 +90,3 @@ declare global {
     };
   }
 }
-

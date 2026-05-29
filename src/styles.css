@@ -54,8 +54,7 @@
 .xwc-primary-button:focus-visible,
 .xwc-secondary-button:focus-visible,
 .xwc-message-input textarea:focus-visible,
-.xwc-field input:focus-visible,
-.xwc-start-message:focus-visible {
+.xwc-field input:focus-visible {
   outline: 3px solid color-mix(in srgb, var(--xwc-theme, #2688c7), transparent 66%);
   outline-offset: 2px;
 }
@@ -192,7 +191,6 @@
 }
 
 .xwc-field input,
-.xwc-start-message,
 .xwc-message-input textarea {
   width: 100%;
   border: 1px solid #ccd6e3;
@@ -205,12 +203,6 @@
 .xwc-field input {
   height: 40px;
   padding: 0 12px;
-}
-
-.xwc-start-message {
-  min-height: 96px;
-  resize: vertical;
-  padding: 10px 12px;
 }
 
 .xwc-primary-button,
@@ -428,4 +420,3 @@
     border-radius: 14px;
   }
 }
-

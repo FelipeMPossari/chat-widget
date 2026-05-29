@@ -54,6 +54,20 @@
         background: #fff;
         font-size: 13px;
       }
+
+      a {
+        width: fit-content;
+        display: inline-flex;
+        align-items: center;
+        min-height: 40px;
+        padding: 0 14px;
+        border-radius: 8px;
+        color: #fff;
+        background: #2688c7;
+        font-size: 14px;
+        font-weight: 700;
+        text-decoration: none;
+      }
     </style>
   </head>
   <body>
@@ -66,18 +80,20 @@
         </p>
         <code>
           &lt;script src="/xchannel-webchat.js"
-          data-widget-key="demo-widget"&gt;&lt;/script&gt;
+          data-widget-key="demo-widget"
+          data-auth-token="landing-anonymous-token"&gt;&lt;/script&gt;
         </code>
+        <a href="/controlled-system.html">Abrir demo de sistema logado</a>
       </section>
     </main>
 
     <script
       type="module"
-      src="/src/index.tsx"
+      src="/src/main.tsx"
       data-widget-key="demo-widget"
+      data-auth-token="landing-anonymous-token"
       data-demo-mode="true"
       data-position="right"
     ></script>
   </body>
 </html>
-

@@ -1,4 +1,4 @@
-import type { ChatWidgetConfig, WidgetPosition, WidgetUserContext } from './types';
+import type { ChatWidgetConfig, WidgetPosition, WidgetUserContext } from '../types';
 
 const DEFAULT_LOCALE = 'pt-BR';
 
@@ -27,10 +27,12 @@ export function readBoolean(value: string | null | undefined, fallback: boolean)
 export function readScriptConfig(script: HTMLScriptElement | null): ChatWidgetConfig {
   const dataset = script?.dataset ?? {};
   const apiBaseUrl = normalizeBaseUrl(dataset.apiBaseUrl);
+  const authToken = dataset.authToken || dataset.token || dataset.userToken;
   const user = readUserContext(dataset);
 
   return {
     widgetKey: dataset.widgetKey || '',
+    authToken,
     apiBaseUrl,
     demoMode: readBoolean(dataset.demoMode, !apiBaseUrl),
     locale: dataset.locale || DEFAULT_LOCALE,
@@ -43,6 +45,7 @@ export function readScriptConfig(script: HTMLScriptElement | null): ChatWidgetCo
 
 export function readElementConfig(element: HTMLElement): ChatWidgetConfig {
   const apiBaseUrl = normalizeBaseUrl(element.getAttribute('api-base-url') ?? undefined);
+  const authToken = attr(element, 'auth-token') || attr(element, 'token') || attr(element, 'user-token');
   const user: WidgetUserContext = {
     externalUserId: attr(element, 'external-user-id'),
     name: attr(element, 'user-name'),
@@ -52,6 +55,7 @@ export function readElementConfig(element: HTMLElement): ChatWidgetConfig {
 
   return {
     widgetKey: attr(element, 'widget-key') || '',
+    authToken,
     apiBaseUrl,
     demoMode: readBoolean(element.getAttribute('demo-mode'), !apiBaseUrl),
     locale: attr(element, 'locale') || DEFAULT_LOCALE,
@@ -67,6 +71,7 @@ export function applyConfigToElement(
   config: Partial<ChatWidgetConfig>
 ): void {
   setAttr(element, 'widget-key', config.widgetKey);
+  setAttr(element, 'auth-token', config.authToken ?? config.user?.token);
   setAttr(element, 'api-base-url', config.apiBaseUrl);
   setAttr(element, 'demo-mode', String(config.demoMode ?? false));
   setAttr(element, 'locale', config.locale);
@@ -85,6 +90,8 @@ export function copyScriptDatasetToElement(
 ): void {
   const mappings: Array<[string, string]> = [
     ['widgetKey', 'widget-key'],
+    ['token', 'auth-token'],
+    ['authToken', 'auth-token'],
     ['apiBaseUrl', 'api-base-url'],
     ['demoMode', 'demo-mode'],
     ['locale', 'locale'],
@@ -133,4 +140,3 @@ function setAttr(element: HTMLElement, name: string, value?: string): void {
 
   element.setAttribute(name, value);
 }
-

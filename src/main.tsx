@@ -1,12 +1,12 @@
 import React from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { ChatWidget } from './components/ChatWidget';
+import { App } from './App';
 import {
   applyConfigToElement,
   copyScriptDatasetToElement,
   readElementConfig,
   readScriptConfig,
-} from './config';
+} from './utils/config';
 import styles from './styles.css?inline';
 import type { ChatWidgetConfig, WidgetController } from './types';
 
@@ -57,10 +57,11 @@ class XChannelChatWidgetElement extends HTMLElement {
     }
 
     const config = readElementConfig(this);
+    this.mountPoint.replaceChildren();
     this.reactRoot ??= createRoot(this.mountPoint);
     this.reactRoot.render(
       <React.StrictMode>
-        <ChatWidget
+        <App
           config={config}
           host={this}
           onControllerReady={(controller) => {
@@ -109,7 +110,7 @@ function findLoaderScript(): HTMLScriptElement | null {
   }
 
   return document.querySelector(
-    'script[data-widget-key][src*="xchannel-webchat"], script[data-xchannel-webchat]'
+    'script[data-xchannel-webchat], script[data-widget-key]'
   );
 }
 
@@ -145,4 +146,3 @@ function findWidget(): XChannelChatWidgetElement | null {
 }
 
 export {};
-

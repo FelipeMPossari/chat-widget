@@ -1,17 +1,13 @@
-import type { ChatApi } from '../api/ChatApi';
-import type { ChatMessage } from '../types';
+import type { IChatApi } from '../api/chatApi';
+import type { ChatMessage } from '../../types';
+import type { IRealtimeClient } from './IRealtimeClient';
 
-export interface RealtimeClient {
-  start: (chatGuid: string, onMessages: (messages: ChatMessage[]) => void) => void;
-  stop: () => void;
-}
-
-export class PollingRealtimeClient implements RealtimeClient {
+export class PollingRealtimeClient implements IRealtimeClient {
   private timerId = 0;
   private knownMessageIds = new Set<string>();
 
   constructor(
-    private readonly api: ChatApi,
+    private readonly api: IChatApi,
     private readonly intervalMs: number
   ) {}
 
