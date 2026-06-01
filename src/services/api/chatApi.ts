@@ -1,20 +1,28 @@
 import type {
   BootstrapResponse,
+  ChatMember,
+  ChatSection,
   ChatMessage,
+  ConversationListFilters,
   ConversationSummary,
 } from '../../types';
 import type { ChatWidgetConfig, WidgetUserContext } from '../../types';
 import type {
   BootstrapRequest,
   CreateConversationRequest,
+  LoadConversationsRequest,
   SendMessageRequest,
   UploadAttachmentRequest,
   XChannelChatListItemDto,
+  XChannelChatMemberDto,
+  XChannelChatSectionDto,
   XChannelMessageDto,
 } from '../../types/api';
 import { ApiClient } from './apiClient';
 import {
   mapChatListItemDtoToConversation,
+  mapMemberDtoToChatMember,
+  mapSectionDtoToChatSection,
   mapMessageDtoToChatMessage,
   readDtoValue,
 } from './chatMappers';
@@ -22,7 +30,8 @@ import { MockChatApi } from './mockChatApi';
 
 export interface IChatApi {
   bootstrap(request: BootstrapRequest): Promise<BootstrapResponse>;
-  listConversations(): Promise<ConversationSummary[]>;
+  listSections(): Promise<ChatSection[]>;
+  listConversations(filters?: ConversationListFilters): Promise<ConversationSummary[]>;
   createConversation(request: CreateConversationRequest): Promise<ConversationSummary>;
   listMessages(chatGuid: string): Promise<ChatMessage[]>;
   sendMessage(chatGuid: string, request: SendMessageRequest): Promise<ChatMessage>;
@@ -41,6 +50,8 @@ export function createChatApi(config: ChatWidgetConfig): IChatApi {
 }
 
 class HttpChatApi implements IChatApi {
+  private currentUserMember?: ChatMember;
+
   constructor(
     private readonly apiClient: ApiClient,
     private readonly currentUser?: WidgetUserContext,
@@ -58,13 +69,26 @@ class HttpChatApi implements IChatApi {
       this.apiClient.setToken(bootstrap.token);
     }
 
+    this.currentUserMember = bootstrap.currentUser;
+
     return bootstrap;
   }
 
-  async listConversations(): Promise<ConversationSummary[]> {
+  async listSections(): Promise<ChatSection[]> {
+    const sections = await this.apiClient.post<XChannelChatSectionDto[]>(
+      '/LoadSections',
+      {}
+    );
+
+    return (sections ?? [])
+      .map(mapSectionDtoToChatSection)
+      .filter((section) => section.name);
+  }
+
+  async listConversations(filters: ConversationListFilters = {}): Promise<ConversationSummary[]> {
     const items = await this.apiClient.post<XChannelChatListItemDto[]>(
       '/LoadConversations',
-      {}
+      toLoadConversationsRequest(filters)
     );
     return (items ?? []).map(mapChatListItemDtoToConversation);
   }
@@ -72,7 +96,7 @@ class HttpChatApi implements IChatApi {
   async createConversation(request: CreateConversationRequest): Promise<ConversationSummary> {
     const item = await this.apiClient.post<XChannelChatListItemDto>(
       '/CreateConversation',
-      request
+      toCreateConversationRequest(request)
     );
     return mapChatListItemDtoToConversation(item);
   }
@@ -118,9 +142,37 @@ class HttpChatApi implements IChatApi {
   private mapMessage(message: XChannelMessageDto): ChatMessage {
     return mapMessageDtoToChatMessage(message, {
       currentUser: this.currentUser,
+      currentUserMember: this.currentUserMember,
       resolveAttachmentUrl: (url) => this.apiClient.resolveUrl(url),
     });
   }
+}
+
+function toLoadConversationsRequest(
+  filters: ConversationListFilters
+): LoadConversationsRequest {
+  const section = filters.section;
+  const tab = filters.tab;
+
+  return {
+    Section: section?.raw as LoadConversationsRequest['Section'],
+    Tab: tab?.raw as LoadConversationsRequest['Tab'],
+    SectionName: section?.name,
+    TabName: tab?.name,
+    SearchTerm: filters.searchTerm?.trim() || '',
+    Take: 50,
+  };
+}
+
+export function toCreateConversationRequest(
+  request: CreateConversationRequest
+): Record<string, unknown> {
+  return {
+    Subject: request.subject,
+    VisitorName: request.visitorName,
+    VisitorEmail: request.visitorEmail,
+    ReceiverChatUsers: request.receiverChatUsers,
+  };
 }
 
 function normalizeBootstrapResponse(
@@ -134,6 +186,7 @@ function normalizeBootstrapResponse(
     token: readDtoValue<string>(response, 'Token') ?? '',
     visitorId: readDtoValue<string>(response, 'VisitorId') ?? fallbackVisitorId,
     mode: mode === 'authenticated' ? 'authenticated' : 'anonymous',
+    currentUser: mapCurrentUser(response),
     settings: {
       title: readDtoValue<string>(settings, 'Title') ?? 'Atendimento XChannel',
       subtitle: readDtoValue<string>(settings, 'Subtitle') ?? 'Fale com nossa equipe',
@@ -145,4 +198,10 @@ function normalizeBootstrapResponse(
       pollingIntervalMs: readDtoValue<number>(settings, 'PollingIntervalMs') ?? 5000,
     },
   };
+}
+
+function mapCurrentUser(response: unknown): ChatMember | undefined {
+  const currentUser = readDtoValue<XChannelChatMemberDto>(response, 'CurrentUser');
+
+  return currentUser ? mapMemberDtoToChatMember(currentUser) : undefined;
 }

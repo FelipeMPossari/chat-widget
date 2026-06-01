@@ -1,6 +1,6 @@
 import type { WidgetUserContext } from './index';
 
-export type XChannelChatChannel = 'chat' | 'whatsapp' | 'instagram' | 'webwidget';
+export type XChannelChatChannel = 'xchannel' | 'chat' | 'whatsapp' | 'instagram';
 
 export interface BootstrapRequest {
   widgetKey: string;
@@ -14,6 +14,7 @@ export interface CreateConversationRequest {
   subject?: string;
   visitorName?: string;
   visitorEmail?: string;
+  receiverChatUsers?: XChannelChatMemberDto[];
 }
 
 export interface SendMessageRequest {
@@ -46,6 +47,49 @@ export interface XChannelChatDestinationDto {
   tabGuid?: string;
 }
 
+export interface XChannelChatTabDto {
+  TabGuid?: string;
+  tabGuid?: string;
+  Name?: string;
+  name?: string;
+  Order?: number;
+  order?: number;
+  State?: string;
+  state?: string;
+  TotalUnread?: number;
+  totalUnread?: number;
+}
+
+export interface XChannelChatSectionDto {
+  SectionGuid?: string;
+  sectionGuid?: string;
+  Name?: string;
+  name?: string;
+  Order?: number;
+  order?: number;
+  Icon?: string;
+  icon?: string;
+  TotalUnread?: number;
+  totalUnread?: number;
+  Tabs?: XChannelChatTabDto[];
+  tabs?: XChannelChatTabDto[];
+}
+
+export interface LoadConversationsRequest {
+  Section?: XChannelChatSectionDto;
+  section?: XChannelChatSectionDto;
+  Tab?: XChannelChatTabDto;
+  tab?: XChannelChatTabDto;
+  SectionName?: string;
+  sectionName?: string;
+  TabName?: string;
+  tabName?: string;
+  SearchTerm?: string;
+  searchTerm?: string;
+  Take?: number;
+  take?: number;
+}
+
 export interface XChannelChatListItemDto {
   IDUserBroadcast?: number;
   idUserBroadcast?: number;
@@ -73,6 +117,8 @@ export interface XChannelChatListItemDto {
   quantityUnreadMessages?: number;
   UnreadCount?: number;
   unreadCount?: number;
+  IsVirtual?: boolean;
+  isVirtual?: boolean;
   System?: XChannelChatChannel | string;
   system?: XChannelChatChannel | string;
   Destinations?: XChannelChatDestinationDto[];

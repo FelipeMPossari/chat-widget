@@ -11,6 +11,9 @@ import type { IChatApi } from '../services/api/chatApi';
 import type {
   BootstrapResponse,
   ChatMessage,
+  ChatSection,
+  ChatTab,
+  ConversationListFilters,
   ConversationSummary,
   WidgetUserContext,
   WidgetSettings,
@@ -31,17 +34,24 @@ interface ChatContextValue {
   toggleOpen: () => void;
   bootstrap: BootstrapResponse | null;
   settings: WidgetSettings;
+  sections: ChatSection[];
+  selectedSection: ChatSection | null;
+  selectedTab: ChatTab | null;
   conversations: ConversationSummary[];
   activeConversation: ConversationSummary | null;
   messages: ChatMessage[];
   loading: boolean;
+  conversationsLoading: boolean;
   sending: boolean;
   error: string;
   canUseConversationList: boolean;
   initialize: () => Promise<void>;
+  selectSection: (section: ChatSection) => Promise<void>;
+  selectTab: (tab: ChatTab) => Promise<void>;
+  openNewConversationPicker: () => Promise<void>;
   startConversation: (input: StartConversationInput) => Promise<boolean>;
   createBlankConversation: () => Promise<void>;
-  selectConversation: (conversation: ConversationSummary) => void;
+  selectConversation: (conversation: ConversationSummary) => Promise<void>;
   backToConversations: () => void;
   sendMessage: (text: string) => Promise<boolean>;
   uploadAttachment: (file?: File) => Promise<void>;
@@ -69,10 +79,14 @@ export function ChatProvider({ children }: ChatProviderProps) {
   const api = useMemo(() => createChatApi(config), [config]);
   const [isOpen, setIsOpen] = useState(false);
   const [bootstrap, setBootstrap] = useState<BootstrapResponse | null>(null);
+  const [sections, setSections] = useState<ChatSection[]>([]);
+  const [selectedSection, setSelectedSection] = useState<ChatSection | null>(null);
+  const [selectedTab, setSelectedTab] = useState<ChatTab | null>(null);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [activeConversation, setActiveConversation] = useState<ConversationSummary | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
+  const [conversationsLoading, setConversationsLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
   const toggleOpen = useCallback(() => setIsOpen((current) => !current), []);
@@ -88,8 +102,14 @@ export function ChatProvider({ children }: ChatProviderProps) {
     bootstrap?.mode === 'authenticated' || settings.allowMultipleConversations;
 
   const reloadConversations = useCallback(
-    async (selectChatGuid?: string) => {
-      const list = await api.listConversations();
+    async (
+      selectChatGuid?: string,
+      filters: ConversationListFilters = {
+        section: selectedSection ?? undefined,
+        tab: selectedTab ?? undefined,
+      }
+    ) => {
+      const list = await api.listConversations(filters);
       setConversations(list);
 
       if (selectChatGuid) {
@@ -98,7 +118,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
         );
       }
     },
-    [api]
+    [api, selectedSection, selectedTab]
   );
 
   const initialize = useCallback(async () => {
@@ -120,16 +140,36 @@ export function ChatProvider({ children }: ChatProviderProps) {
       });
 
       setBootstrap(response);
-      const list = await api.listConversations();
-      setConversations(list);
-
-      const openConversation = list.find((conversation) => conversation.status === 'open');
       const responseSettings = {
         ...DEFAULT_SETTINGS,
         ...(response.settings ?? {}),
       };
       const responseAllowsConversationList =
         response.mode === 'authenticated' || responseSettings.allowMultipleConversations;
+      let list: ConversationSummary[] = [];
+
+      if (responseAllowsConversationList) {
+        const loadedSections = await api.listSections();
+        const initialSection = loadedSections[0] ?? null;
+        const initialTab = getInitialTab(initialSection);
+
+        setSections(loadedSections);
+        setSelectedSection(initialSection);
+        setSelectedTab(initialTab);
+
+        list = await api.listConversations({
+          section: initialSection ?? undefined,
+          tab: initialTab ?? undefined,
+        });
+        setConversations(list);
+      } else {
+        setSections([]);
+        setSelectedSection(null);
+        setSelectedTab(null);
+        setConversations([]);
+      }
+
+      const openConversation = list.find((conversation) => conversation.status === 'open');
 
       if (!responseSettings.requireIdentity && !openConversation && !responseAllowsConversationList) {
         const created = await api.createConversation({});
@@ -148,6 +188,75 @@ export function ChatProvider({ children }: ChatProviderProps) {
     }
   }, [api, bootstrap, config, loading]);
 
+  const selectSection = useCallback(
+    async (section: ChatSection) => {
+      const tab = getInitialTab(section);
+
+      setSelectedSection(section);
+      setSelectedTab(tab);
+      setConversationsLoading(true);
+      setError('');
+
+      try {
+        await reloadConversations(undefined, {
+          section,
+          tab: tab ?? undefined,
+        });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Nao foi possivel carregar as conversas.');
+      } finally {
+        setConversationsLoading(false);
+      }
+    },
+    [reloadConversations]
+  );
+
+  const selectTab = useCallback(
+    async (tab: ChatTab) => {
+      setSelectedTab(tab);
+      setConversationsLoading(true);
+      setError('');
+
+      try {
+        await reloadConversations(undefined, {
+          section: selectedSection ?? undefined,
+          tab,
+        });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Nao foi possivel carregar as conversas.');
+      } finally {
+        setConversationsLoading(false);
+      }
+    },
+    [reloadConversations, selectedSection]
+  );
+
+  const openNewConversationPicker = useCallback(async () => {
+    const chatSection = findSectionByName(sections, 'Chat') ?? sections[0];
+    const usersTab = findTabByName(chatSection, 'Usuarios') ?? getInitialTab(chatSection);
+
+    if (!chatSection || !usersTab) {
+      setError('Nao foi possivel carregar a lista de usuarios.');
+      return;
+    }
+
+    setSelectedSection(chatSection);
+    setSelectedTab(usersTab);
+    setConversationsLoading(true);
+    setError('');
+
+    try {
+      await reloadConversations(undefined, {
+        section: chatSection,
+        tab: usersTab,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Nao foi possivel carregar os usuarios.');
+    } finally {
+      setConversationsLoading(false);
+    }
+  }, [reloadConversations, sections]);
+
   const startConversation = useCallback(
     async (input: StartConversationInput) => {
       setSending(true);
@@ -162,7 +271,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
         const created = await api.createConversation(request);
         setMessages([]);
         setActiveConversation(created);
-        await reloadConversations(created.chatGuid);
+        await reloadConversations();
         return true;
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Nao foi possivel iniciar a conversa.');
@@ -180,7 +289,9 @@ export function ChatProvider({ children }: ChatProviderProps) {
 
     try {
       const created = await api.createConversation({ subject: 'Nova conversa' });
-      await reloadConversations(created.chatGuid);
+      setMessages([]);
+      setActiveConversation(created);
+      await reloadConversations();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Nao foi possivel criar a conversa.');
     } finally {
@@ -188,9 +299,42 @@ export function ChatProvider({ children }: ChatProviderProps) {
     }
   }, [api, reloadConversations]);
 
-  const selectConversation = useCallback((conversation: ConversationSummary) => {
-    setActiveConversation(conversation);
-  }, []);
+  const selectConversation = useCallback(
+    async (conversation: ConversationSummary) => {
+      if (!conversation.isVirtual) {
+        setActiveConversation(conversation);
+        return;
+      }
+
+      const receiverChatUsers = conversation.members
+        .map((member) => member.raw)
+        .filter(Boolean) as CreateConversationRequest['receiverChatUsers'];
+
+      if (!receiverChatUsers?.length) {
+        setError('Usuario da conversa nao identificado.');
+        return;
+      }
+
+      setSending(true);
+      setError('');
+
+      try {
+        const created = await api.createConversation({
+          subject: conversation.title,
+          receiverChatUsers,
+        });
+
+        setMessages([]);
+        setActiveConversation(created);
+        await reloadConversations();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Nao foi possivel criar a conversa.');
+      } finally {
+        setSending(false);
+      }
+    },
+    [api, reloadConversations]
+  );
 
   const backToConversations = useCallback(() => {
     setActiveConversation(null);
@@ -280,14 +424,21 @@ export function ChatProvider({ children }: ChatProviderProps) {
       toggleOpen,
       bootstrap,
       settings,
+      sections,
+      selectedSection,
+      selectedTab,
       conversations,
       activeConversation,
       messages,
       loading,
+      conversationsLoading,
       sending,
       error,
       canUseConversationList,
       initialize,
+      selectSection,
+      selectTab,
+      openNewConversationPicker,
       startConversation,
       createBlankConversation,
       selectConversation,
@@ -303,13 +454,20 @@ export function ChatProvider({ children }: ChatProviderProps) {
       canUseConversationList,
       closeConversation,
       conversations,
+      conversationsLoading,
       createBlankConversation,
       error,
       initialize,
       isOpen,
       loading,
       messages,
+      sections,
       selectConversation,
+      selectedSection,
+      selectedTab,
+      selectSection,
+      selectTab,
+      openNewConversationPicker,
       sendMessage,
       sending,
       settings,
@@ -330,6 +488,28 @@ export function useChatContext() {
   }
 
   return context;
+}
+
+function getInitialTab(section?: ChatSection | null): ChatTab | null {
+  return section?.tabs?.[0] ?? null;
+}
+
+function findSectionByName(sections: ChatSection[], name: string): ChatSection | undefined {
+  const normalizedName = normalizeLabel(name);
+  return sections.find((section) => normalizeLabel(section.name) === normalizedName);
+}
+
+function findTabByName(section: ChatSection | undefined, name: string): ChatTab | undefined {
+  const normalizedName = normalizeLabel(name);
+  return section?.tabs?.find((tab) => normalizeLabel(tab.name) === normalizedName);
+}
+
+function normalizeLabel(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
 }
 
 function toBootstrapUserContext(user?: WidgetUserContext): WidgetUserContext | undefined {

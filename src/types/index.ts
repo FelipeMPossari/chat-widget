@@ -40,6 +40,48 @@ export interface BootstrapResponse {
   visitorId: string;
   mode: WidgetMode;
   settings: WidgetSettings;
+  currentUser?: ChatMember;
+}
+
+export interface ChatTab {
+  tabGuid: string;
+  name: string;
+  order: number;
+  state?: string;
+  totalUnread: number;
+  raw?: unknown;
+}
+
+export interface ChatSection {
+  sectionGuid: string;
+  name: string;
+  order: number;
+  icon?: string;
+  totalUnread: number;
+  tabs: ChatTab[];
+  raw?: unknown;
+}
+
+export interface ConversationListFilters {
+  section?: ChatSection;
+  tab?: ChatTab;
+  searchTerm?: string;
+}
+
+export interface ChatMember {
+  id?: number;
+  userChatId?: number;
+  name?: string;
+  type?: string | number;
+  number?: string;
+  externalId?: string;
+  raw?: unknown;
+}
+
+export interface ChatDestination {
+  sectionGuid?: string;
+  tabGuid?: string;
+  raw?: unknown;
 }
 
 export interface ConversationSummary {
@@ -49,6 +91,9 @@ export interface ConversationSummary {
   lastMessage?: string;
   lastMessageAt?: string;
   unreadCount: number;
+  isVirtual: boolean;
+  members: ChatMember[];
+  destinations: ChatDestination[];
   raw?: unknown;
 }
 

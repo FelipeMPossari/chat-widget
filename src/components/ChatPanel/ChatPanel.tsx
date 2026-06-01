@@ -11,11 +11,9 @@ export function ChatPanel() {
     activeConversation,
     bootstrap,
     canUseConversationList,
-    closeConversation,
     error,
     initialize,
     loading,
-    sending,
     setIsOpen,
     settings,
   } = useChat();
@@ -29,18 +27,6 @@ export function ChatPanel() {
         </div>
 
         <div className="xwc-header-actions">
-          {activeConversation && (
-            <button
-              className="xwc-icon-button"
-              type="button"
-              title="Encerrar conversa"
-              aria-label="Encerrar conversa"
-              disabled={sending}
-              onClick={() => void closeConversation()}
-            >
-              <X size={17} />
-            </button>
-          )}
           <button
             className="xwc-icon-button"
             type="button"
@@ -84,4 +70,3 @@ export function ChatPanel() {
     return <StartConversationForm />;
   }
 }
-

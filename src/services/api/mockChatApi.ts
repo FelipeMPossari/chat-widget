@@ -1,6 +1,8 @@
 import type {
   BootstrapResponse,
+  ChatSection,
   ChatMessage,
+  ConversationListFilters,
   ConversationSummary,
 } from '../../types';
 import type {
@@ -8,7 +10,9 @@ import type {
   CreateConversationRequest,
   SendMessageRequest,
   UploadAttachmentRequest,
+  XChannelChatDestinationDto,
   XChannelChatListItemDto,
+  XChannelChatMemberDto,
   XChannelMessageDto,
 } from '../../types/api';
 import type { IChatApi } from './chatApi';
@@ -39,6 +43,20 @@ export class MockChatApi implements IChatApi {
       token: `mock-${request.visitorId}`,
       visitorId: request.visitorId,
       mode: authenticated ? 'authenticated' : 'anonymous',
+      currentUser: authenticated
+        ? {
+            id: 1,
+            userChatId: 1,
+            name: request.user?.name || 'Usuario logado',
+            type: 'Usuario',
+            raw: {
+              Id: 1,
+              UserChatId: 1,
+              Name: request.user?.name || 'Usuario logado',
+              Type: 'Usuario',
+            },
+          }
+        : undefined,
       settings: {
         title: 'Atendimento XChannel',
         subtitle: authenticated
@@ -53,9 +71,16 @@ export class MockChatApi implements IChatApi {
     };
   }
 
-  async listConversations(): Promise<ConversationSummary[]> {
+  async listSections(): Promise<ChatSection[]> {
+    await delay(120);
+    return MOCK_SECTIONS;
+  }
+
+  async listConversations(filters: ConversationListFilters = {}): Promise<ConversationSummary[]> {
     await delay(180);
-    return this.conversations.map(mapChatListItemDtoToConversation);
+    return this.conversations
+      .filter((conversation) => matchesConversationFilters(conversation, filters))
+      .map(mapChatListItemDtoToConversation);
   }
 
   async createConversation(request: CreateConversationRequest): Promise<ConversationSummary> {
@@ -63,28 +88,38 @@ export class MockChatApi implements IChatApi {
 
     const chatGuid = createGuid();
     const createdAt = new Date().toISOString();
-    const greeting = `Ola${request.visitorName ? `, ${request.visitorName}` : ''}. Como podemos ajudar?`;
+    const receiver = request.receiverChatUsers?.[0];
+    const receiverName = readDtoValue<string>(receiver, 'Name');
+    const visitorName = request.visitorName || this.currentRequest?.user?.name || 'Visitante';
+    const greeting = receiverName
+      ? `Conversa iniciada com ${receiverName}.`
+      : `Ola${request.visitorName ? `, ${request.visitorName}` : ''}. Como podemos ajudar?`;
     const conversation: XChannelChatListItemDto = {
       ChatGuid: chatGuid,
-      Title: request.subject || 'Nova conversa',
-      Channel: 'webwidget',
-      Type: 'Widget',
+      Title: receiverName || request.subject || 'Nova conversa',
+      Channel: 'xchannel',
+      Type: 'Individual',
       Status: 'open',
       LastMessage: greeting,
       DateLastMessage: createdAt,
       CreatedAt: createdAt,
       QuantityUnreadMessages: 0,
+      Destinations: [{ SectionGuid: 'chat', TabGuid: 'ativos' }],
       Members: [
         {
-          Name: request.visitorName || this.currentRequest?.user?.name || 'Visitante',
+          Name: visitorName,
           ExternalId:
             this.currentRequest?.user?.externalUserId ?? this.currentRequest?.visitorId,
-          Type: 'Visitante',
+          Type: 'Usuario',
         },
+        ...(receiver ? [receiver] : []),
       ],
     };
 
-    this.conversations = [conversation, ...this.conversations];
+    this.conversations = [
+      conversation,
+      ...this.conversations.filter((item) => !isSameVirtualReceiver(item, receiver)),
+    ];
     this.messagesByConversation.set(chatGuid, [
       createMessageDto(chatGuid, {
         senderName: 'Sistema',
@@ -217,19 +252,21 @@ export class MockChatApi implements IChatApi {
     const now = new Date();
     const userName = request.user?.name || 'Usuario logado';
     const activeChatGuid = createGuid();
-    const closedChatGuid = createGuid();
+    const whatsappChatGuid = createGuid();
+    const instagramChatGuid = createGuid();
 
     this.conversations = [
       {
         ChatGuid: activeChatGuid,
         Title: 'Suporte do portal',
-        Channel: 'webwidget',
-        Type: 'Widget',
+        Channel: 'xchannel',
+        Type: 'Individual',
         Status: 'open',
         LastMessage: 'Podemos continuar por aqui quando precisar.',
         DateLastMessage: now.toISOString(),
         CreatedAt: now.toISOString(),
         QuantityUnreadMessages: 1,
+        Destinations: [{ SectionGuid: 'chat', TabGuid: 'ativos' }],
         Members: [
           {
             Name: userName,
@@ -239,23 +276,44 @@ export class MockChatApi implements IChatApi {
         ],
       },
       {
-        ChatGuid: closedChatGuid,
-        Title: 'Duvida sobre contrato XC-1042',
-        Channel: 'webwidget',
-        Type: 'Widget',
-        Status: 'closed',
-        LastMessage: 'Atendimento encerrado.',
-        DateLastMessage: new Date(now.getTime() - 86400000).toISOString(),
-        CreatedAt: new Date(now.getTime() - 90000000).toISOString(),
+        ChatGuid: whatsappChatGuid,
+        Title: 'Cliente WhatsApp',
+        Channel: 'whatsapp',
+        Type: 'Individual',
+        Status: 'open',
+        LastMessage: 'Preciso da segunda via do boleto.',
+        DateLastMessage: new Date(now.getTime() - 3600000).toISOString(),
+        CreatedAt: new Date(now.getTime() - 7200000).toISOString(),
         QuantityUnreadMessages: 0,
+        Destinations: [{ SectionGuid: 'whatsapp', TabGuid: 'espera' }],
         Members: [
           {
-            Name: userName,
-            ExternalId: request.user?.externalUserId,
-            Type: 'Visitante',
+            Name: 'Cliente WhatsApp',
+            Type: 'Pessoa',
           },
         ],
       },
+      {
+        ChatGuid: instagramChatGuid,
+        Title: 'Lead Instagram',
+        Channel: 'instagram',
+        Type: 'Individual',
+        Status: 'open',
+        LastMessage: 'Vi o produto no perfil de voces.',
+        DateLastMessage: new Date(now.getTime() - 5400000).toISOString(),
+        CreatedAt: new Date(now.getTime() - 9200000).toISOString(),
+        QuantityUnreadMessages: 0,
+        Destinations: [{ SectionGuid: 'instagram', TabGuid: 'vendas' }],
+        Members: [
+          {
+            Name: 'Lead Instagram',
+            Type: 'Pessoa',
+          },
+        ],
+      },
+      createVirtualUserConversation('101', 'Ana Souza'),
+      createVirtualUserConversation('102', 'Bruno Lima'),
+      createVirtualUserConversation('103', 'Carla Mendes'),
     ];
 
     this.messagesByConversation.set(activeChatGuid, [
@@ -279,25 +337,27 @@ export class MockChatApi implements IChatApi {
       }),
     ]);
 
-    this.messagesByConversation.set(closedChatGuid, [
-      createMessageDto(closedChatGuid, {
+    this.messagesByConversation.set(whatsappChatGuid, [
+      createMessageDto(whatsappChatGuid, {
+        senderName: 'Cliente WhatsApp',
+        senderType: 'Pessoa',
+        body: 'Preciso da segunda via do boleto.',
+        createdAt: new Date(now.getTime() - 3600000).toISOString(),
+      }),
+    ]);
+
+    this.messagesByConversation.set(instagramChatGuid, [
+      createMessageDto(instagramChatGuid, {
+        senderName: 'Lead Instagram',
+        senderType: 'Pessoa',
+        body: 'Vi o produto no perfil de voces.',
+        createdAt: new Date(now.getTime() - 5400000).toISOString(),
+      }),
+      createMessageDto(instagramChatGuid, {
         senderName: userName,
-        senderType: 'Visitante',
-        externalId: request.user?.externalUserId,
-        body: 'Preciso consultar informacoes do contrato XC-1042.',
-        createdAt: new Date(now.getTime() - 90000000).toISOString(),
-      }),
-      createMessageDto(closedChatGuid, {
-        senderName: 'Equipe XChannel',
         senderType: 'Usuario',
-        body: 'Contrato localizado. Enviamos o resumo para seu e-mail.',
-        createdAt: new Date(now.getTime() - 89900000).toISOString(),
-      }),
-      createMessageDto(closedChatGuid, {
-        senderName: 'Sistema',
-        senderType: 'Sistema',
-        body: 'Atendimento encerrado.',
-        createdAt: new Date(now.getTime() - 89800000).toISOString(),
+        body: 'Pode me passar o melhor telefone para contato?',
+        createdAt: new Date(now.getTime() - 5300000).toISOString(),
       }),
     ]);
   }
@@ -325,6 +385,163 @@ interface CreateMessageDtoParams {
   attachment?: XChannelMessageDto['Attachment'];
 }
 
+const MOCK_SECTIONS: ChatSection[] = [
+  {
+    sectionGuid: 'chat',
+    name: 'Chat',
+    order: 1,
+    totalUnread: 1,
+    tabs: [
+      {
+        tabGuid: 'ativos',
+        name: 'Ativos',
+        order: 1,
+        state: 'Virtual',
+        totalUnread: 1,
+        raw: { TabGuid: 'ativos', Name: 'Ativos', Order: 1, State: 'Virtual', TotalUnread: 1 },
+      },
+    ],
+    raw: { SectionGuid: 'chat', Name: 'Chat', Order: 1, TotalUnread: 1 },
+  },
+  {
+    sectionGuid: 'whatsapp',
+    name: 'Whatsapp',
+    order: 2,
+    totalUnread: 0,
+    tabs: [
+      {
+        tabGuid: 'espera',
+        name: 'Espera',
+        order: 1,
+        state: 'Virtual',
+        totalUnread: 0,
+        raw: { TabGuid: 'espera', Name: 'Espera', Order: 1, State: 'Virtual', TotalUnread: 0 },
+      },
+      {
+        tabGuid: 'suporte',
+        name: 'Suporte',
+        order: 2,
+        totalUnread: 0,
+        raw: { TabGuid: 'suporte', Name: 'Suporte', Order: 2, TotalUnread: 0 },
+      },
+    ],
+    raw: { SectionGuid: 'whatsapp', Name: 'Whatsapp', Order: 2, TotalUnread: 0 },
+  },
+  {
+    sectionGuid: 'instagram',
+    name: 'Instagram',
+    order: 3,
+    totalUnread: 0,
+    tabs: [
+      {
+        tabGuid: 'espera-instagram',
+        name: 'Espera',
+        order: 1,
+        state: 'Virtual',
+        totalUnread: 0,
+        raw: { TabGuid: 'espera-instagram', Name: 'Espera', Order: 1, State: 'Virtual', TotalUnread: 0 },
+      },
+      {
+        tabGuid: 'vendas',
+        name: 'Vendas',
+        order: 2,
+        totalUnread: 0,
+        raw: { TabGuid: 'vendas', Name: 'Vendas', Order: 2, TotalUnread: 0 },
+      },
+    ],
+    raw: { SectionGuid: 'instagram', Name: 'Instagram', Order: 3, TotalUnread: 0 },
+  },
+];
+
+function matchesConversationFilters(
+  conversation: XChannelChatListItemDto,
+  filters: ConversationListFilters
+): boolean {
+  const destinations =
+    readDtoValue<XChannelChatDestinationDto[]>(conversation, 'Destinations') ?? [];
+  const sectionGuid = filters.section?.sectionGuid;
+  const tabGuid = filters.tab?.tabGuid;
+  const searchTerm = filters.searchTerm?.trim().toLowerCase();
+
+  if (sectionGuid) {
+    const hasSection = destinations.some(
+      (destination) =>
+        readDtoValue<string>(destination, 'SectionGuid') === sectionGuid
+    );
+
+    if (!hasSection) {
+      return false;
+    }
+  }
+
+  if (tabGuid) {
+    const hasTab = destinations.some(
+      (destination) => readDtoValue<string>(destination, 'TabGuid') === tabGuid
+    );
+
+    if (!hasTab) {
+      return false;
+    }
+  }
+
+  if (!searchTerm) {
+    return true;
+  }
+
+  const title = readDtoValue<string>(conversation, 'Title') ?? '';
+  const lastMessage = readDtoValue<string>(conversation, 'LastMessage') ?? '';
+
+  return `${title} ${lastMessage}`.toLowerCase().includes(searchTerm);
+}
+
+function createVirtualUserConversation(id: string, name: string): XChannelChatListItemDto {
+  const now = new Date().toISOString();
+
+  return {
+    ChatGuid: createGuid(),
+    Title: name,
+    Channel: 'xchannel',
+    Type: 'Individual',
+    Status: 'open',
+    LastMessage: '',
+    DateLastMessage: now,
+    CreatedAt: now,
+    QuantityUnreadMessages: 0,
+    IsVirtual: true,
+    Destinations: [{ SectionGuid: 'chat', TabGuid: 'usuarios' }],
+    Members: [
+      {
+        Id: Number(id),
+        Name: name,
+        Type: 'Usuario',
+      },
+    ],
+  };
+}
+
+function isSameVirtualReceiver(
+  conversation: XChannelChatListItemDto,
+  receiver?: XChannelChatMemberDto
+): boolean {
+  if (!receiver || !readDtoValue<boolean>(conversation, 'IsVirtual')) {
+    return false;
+  }
+
+  const receiverId = readDtoValue<number>(receiver, 'Id');
+  const receiverName = readDtoValue<string>(receiver, 'Name');
+  const members = readDtoValue<XChannelChatMemberDto[]>(conversation, 'Members') ?? [];
+
+  return members.some((member) => {
+    const memberId = readDtoValue<number>(member, 'Id');
+    const memberName = readDtoValue<string>(member, 'Name');
+
+    return (
+      (receiverId != null && memberId === receiverId) ||
+      (!!receiverName && memberName === receiverName)
+    );
+  });
+}
+
 function createMessageDto(
   chatGuid: string,
   params: CreateMessageDtoParams
@@ -332,9 +549,9 @@ function createMessageDto(
   return {
     MessageGuid: createGuid(),
     ChatGuid: chatGuid,
-    SenderUser: {
-      Name: params.senderName,
-      Type: params.senderType,
+      SenderUser: {
+        Name: params.senderName,
+        Type: params.senderType,
       ExternalId: params.externalId,
     },
     Body: params.body,

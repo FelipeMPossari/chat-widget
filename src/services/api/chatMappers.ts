@@ -1,20 +1,28 @@
 import type {
   ChatAttachment,
   ChatAuthorType,
+  ChatDestination,
+  ChatMember,
   ChatMessage,
+  ChatSection,
+  ChatTab,
   ConversationStatus,
   ConversationSummary,
   WidgetUserContext,
 } from '../../types';
 import type {
   XChannelChatAttachmentDto,
+  XChannelChatDestinationDto,
   XChannelChatListItemDto,
   XChannelChatMemberDto,
+  XChannelChatSectionDto,
+  XChannelChatTabDto,
   XChannelMessageDto,
 } from '../../types/api';
 
 interface MapMessageOptions {
   currentUser?: WidgetUserContext;
+  currentUserMember?: ChatMember;
   resolveAttachmentUrl?: (url: string) => string;
 }
 
@@ -28,6 +36,9 @@ export function mapChatListItemDtoToConversation(
   const lastMessage = lastMessageIsDeleted
     ? 'Mensagem removida.'
     : readDtoValue<string>(item, 'LastMessage');
+  const members = readDtoValue<XChannelChatMemberDto[]>(item, 'Members') ?? [];
+  const destinations =
+    readDtoValue<XChannelChatDestinationDto[]>(item, 'Destinations') ?? [];
 
   return {
     chatGuid,
@@ -43,7 +54,59 @@ export function mapChatListItemDtoToConversation(
       readDtoValue<number>(item, 'QuantityUnreadMessages') ??
       readDtoValue<number>(item, 'UnreadCount') ??
       0,
+    isVirtual: readDtoValue<boolean>(item, 'IsVirtual') ?? false,
+    members: members.map(mapMemberDtoToChatMember),
+    destinations: destinations.map(mapDestinationDtoToChatDestination),
     raw: item,
+  };
+}
+
+export function mapMemberDtoToChatMember(member: XChannelChatMemberDto): ChatMember {
+  return {
+    id: readDtoValue<number>(member, 'Id'),
+    userChatId: readDtoValue<number>(member, 'UserChatId'),
+    name: readDtoValue<string>(member, 'Name'),
+    type: readDtoValue<string | number>(member, 'Type'),
+    number: readDtoValue<string>(member, 'Number'),
+    externalId: readDtoValue<string>(member, 'ExternalId'),
+    raw: member,
+  };
+}
+
+export function mapDestinationDtoToChatDestination(
+  destination: XChannelChatDestinationDto
+): ChatDestination {
+  return {
+    sectionGuid: readDtoValue<string>(destination, 'SectionGuid'),
+    tabGuid: readDtoValue<string>(destination, 'TabGuid'),
+    raw: destination,
+  };
+}
+
+export function mapSectionDtoToChatSection(
+  section: XChannelChatSectionDto
+): ChatSection {
+  const tabs = readDtoValue<XChannelChatTabDto[]>(section, 'Tabs') ?? [];
+
+  return {
+    sectionGuid: readDtoValue<string>(section, 'SectionGuid') ?? '',
+    name: readDtoValue<string>(section, 'Name') ?? '',
+    order: readDtoValue<number>(section, 'Order') ?? 0,
+    icon: readDtoValue<string>(section, 'Icon'),
+    totalUnread: readDtoValue<number>(section, 'TotalUnread') ?? 0,
+    tabs: tabs.map(mapTabDtoToChatTab),
+    raw: section,
+  };
+}
+
+export function mapTabDtoToChatTab(tab: XChannelChatTabDto): ChatTab {
+  return {
+    tabGuid: readDtoValue<string>(tab, 'TabGuid') ?? '',
+    name: readDtoValue<string>(tab, 'Name') ?? '',
+    order: readDtoValue<number>(tab, 'Order') ?? 0,
+    state: readDtoValue<string>(tab, 'State'),
+    totalUnread: readDtoValue<number>(tab, 'TotalUnread') ?? 0,
+    raw: tab,
   };
 }
 
@@ -63,7 +126,7 @@ export function mapMessageDtoToChatMessage(
   return {
     id: readDtoValue<string>(message, 'MessageGuid') ?? createGuid(),
     chatGuid: readDtoValue<string>(message, 'ChatGuid') ?? '',
-    authorType: inferAuthorType(sender, options.currentUser),
+    authorType: inferAuthorType(sender, options.currentUser, options.currentUserMember),
     authorName: readDtoValue<string>(sender, 'Name'),
     text,
     attachments: attachments.length ? attachments : undefined,
@@ -174,15 +237,32 @@ function normalizeConversationStatus(value?: string): ConversationStatus {
 
 function inferAuthorType(
   sender?: XChannelChatMemberDto,
-  currentUser?: WidgetUserContext
+  currentUser?: WidgetUserContext,
+  currentUserMember?: ChatMember
 ): ChatAuthorType {
   if (!sender) {
     return 'system';
   }
 
+  if (isCurrentUserSender(sender, currentUserMember)) {
+    return 'visitor';
+  }
+
   const senderType = `${readDtoValue<string | number>(sender, 'Type') ?? ''}`.toLowerCase();
   const externalId = readDtoValue<string>(sender, 'ExternalId');
   const senderName = readDtoValue<string>(sender, 'Name');
+
+  if (senderType.includes('system') || senderType.includes('sistema')) {
+    return 'system';
+  }
+
+  if (currentUserMember) {
+    if (currentUser?.name && senderName === currentUser.name) {
+      return 'visitor';
+    }
+
+    return 'agent';
+  }
 
   if (currentUser?.externalUserId && externalId === currentUser.externalUserId) {
     return 'visitor';
@@ -202,11 +282,40 @@ function inferAuthorType(
     return 'visitor';
   }
 
-  if (senderType.includes('system') || senderType.includes('sistema')) {
-    return 'system';
+  return 'agent';
+}
+
+function isCurrentUserSender(
+  sender: XChannelChatMemberDto,
+  currentUserMember?: ChatMember
+): boolean {
+  if (!currentUserMember) {
+    return false;
   }
 
-  return 'agent';
+  const senderUserChatId = readDtoValue<number>(sender, 'UserChatId');
+  const senderId = readDtoValue<number>(sender, 'Id');
+  const senderType = `${readDtoValue<string | number>(sender, 'Type') ?? ''}`.toLowerCase();
+  const currentType = `${currentUserMember.type ?? ''}`.toLowerCase();
+
+  if (
+    currentUserMember.userChatId != null &&
+    senderUserChatId != null &&
+    currentUserMember.userChatId === senderUserChatId
+  ) {
+    return true;
+  }
+
+  if (
+    currentUserMember.id != null &&
+    senderId != null &&
+    currentUserMember.id === senderId &&
+    senderType === currentType
+  ) {
+    return true;
+  }
+
+  return false;
 }
 
 function collectAttachments(message: XChannelMessageDto): XChannelChatAttachmentDto[] {
