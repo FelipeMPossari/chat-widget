@@ -2,6 +2,7 @@ import type {
   ChatAttachment,
   ChatAuthorType,
   ChatDestination,
+  ChatInteractiveList,
   ChatMember,
   ChatMessage,
   ChatSection,
@@ -17,6 +18,7 @@ import type {
   XChannelChatMemberDto,
   XChannelChatSectionDto,
   XChannelChatTabDto,
+  XChannelChatInteractiveListDto,
   XChannelMessageDto,
 } from '../../types/api';
 
@@ -43,6 +45,7 @@ export function mapChatListItemDtoToConversation(
   return {
     chatGuid,
     title,
+    channel: readDtoValue<string>(item, 'Channel') ?? readDtoValue<string>(item, 'System'),
     status: normalizeConversationStatus(readDtoValue<string>(item, 'Status')),
     lastMessage,
     lastMessageAt: toMessageDate(
@@ -116,9 +119,10 @@ export function mapMessageDtoToChatMessage(
 ): ChatMessage {
   const sender = readDtoValue<XChannelChatMemberDto>(message, 'SenderUser');
   const isDeleted = readDtoValue<boolean>(message, 'IsDeleted') ?? false;
+  const interactiveList = isDeleted ? undefined : parseInteractiveList(message);
   const text = isDeleted
     ? 'Mensagem removida.'
-    : getInteractiveListText(message) ?? readDtoValue<string>(message, 'Body');
+    : interactiveList?.bodyText ?? readDtoValue<string>(message, 'Body');
   const attachments = collectAttachments(message)
     .map((attachment) => mapAttachmentDtoToChatAttachment(attachment, options))
     .filter(Boolean) as ChatAttachment[];
@@ -130,6 +134,7 @@ export function mapMessageDtoToChatMessage(
     authorName: readDtoValue<string>(sender, 'Name'),
     text,
     attachments: attachments.length ? attachments : undefined,
+    interactiveList,
     createdAt: toMessageDate(readDtoValue<string>(message, 'CreatedAt')),
     status: readDtoValue<string>(message, 'Status'),
     raw: message,
@@ -325,14 +330,11 @@ function collectAttachments(message: XChannelMessageDto): XChannelChatAttachment
   return [attachment, ...attachments].filter(Boolean) as XChannelChatAttachmentDto[];
 }
 
-function getInteractiveListText(message: XChannelMessageDto): string | undefined {
-  const interactiveList = readDtoValue<Record<string, unknown>>(message, 'InteractiveList');
+function parseInteractiveList(message: XChannelMessageDto): ChatInteractiveList | undefined {
+  const interactiveList = readDtoValue<XChannelChatInteractiveListDto>(message, 'InteractiveList');
 
   if (interactiveList) {
-    return (
-      readDtoValue<string>(interactiveList, 'BodyText') ??
-      readDtoValue<string>(interactiveList, 'Body')
-    );
+    return normalizeInteractiveList(interactiveList);
   }
 
   const body = readDtoValue<string>(message, 'Body');
@@ -350,16 +352,61 @@ function getInteractiveListText(message: XChannelMessageDto): string | undefined
     }
 
     const parsedList = (parsed.interactiveList ?? parsed.InteractiveList) as
-      | Record<string, unknown>
+      | XChannelChatInteractiveListDto
       | undefined;
 
-    return (
-      readDtoValue<string>(parsedList, 'BodyText') ??
-      readDtoValue<string>(parsedList, 'Body')
-    );
+    return normalizeInteractiveList(parsedList);
   } catch {
     return undefined;
   }
+}
+
+function normalizeInteractiveList(
+  list?: XChannelChatInteractiveListDto
+): ChatInteractiveList | undefined {
+  if (!list) {
+    return undefined;
+  }
+
+  const sections = readDtoValue<XChannelChatInteractiveListDto['Sections']>(list, 'Sections') ?? [];
+  const bodyText =
+    readDtoValue<string>(list, 'BodyText') ??
+    readDtoValue<string>(list, 'Body') ??
+    '';
+  const buttonText = readDtoValue<string>(list, 'ButtonText') ?? 'Ver opções';
+
+  if (!bodyText.trim()) {
+    return undefined;
+  }
+
+  return {
+    headerText:
+      readDtoValue<string>(list, 'HeaderText') ??
+      readDtoValue<string>(list, 'Title'),
+    bodyText,
+    buttonText,
+    sections: sections.map((section) => {
+      const rows =
+        readDtoValue<NonNullable<XChannelChatInteractiveListDto['Sections']>[number]['Rows']>(
+          section,
+          'Rows'
+        ) ??
+        readDtoValue<NonNullable<XChannelChatInteractiveListDto['Sections']>[number]['Items']>(
+          section,
+          'Items'
+        ) ??
+        [];
+
+      return {
+        title: readDtoValue<string>(section, 'Title'),
+        rows: rows.map((row) => ({
+          id: readDtoValue<string>(row, 'Id'),
+          title: readDtoValue<string>(row, 'Title'),
+          description: readDtoValue<string>(row, 'Description'),
+        })),
+      };
+    }),
+  };
 }
 
 function createGuid(): string {

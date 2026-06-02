@@ -1,4 +1,10 @@
+import { remuxWebmOpusToOggFile } from './audioRemux';
+
 export async function prepareAttachmentFile(file: File): Promise<File> {
+    if (isWebmAudio(file)) {
+        return remuxWebmOpusToOggFile(file);
+    }
+
     if (!isImageFile(file)) {
         return file;
     }
@@ -10,6 +16,16 @@ export async function prepareAttachmentFile(file: File): Promise<File> {
     }
 
     return resizeWebpSticker(file, image);
+}
+
+function isWebmAudio(file: File): boolean {
+    const mimeType = file.type.toLowerCase();
+    const fileName = file.name.toLowerCase();
+
+    return (
+        (mimeType.startsWith('audio/') && mimeType.includes('webm')) ||
+        fileName.endsWith('.webm')
+    );
 }
 
 function isImageFile(file: File): boolean {

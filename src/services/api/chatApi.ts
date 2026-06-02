@@ -3,6 +3,7 @@ import type {
     ChatMember,
     ChatSection,
     ChatMessage,
+    ChatInteractiveList,
     ConversationListFilters,
     ConversationSummary,
 } from '../../types';
@@ -11,6 +12,7 @@ import type {
     BootstrapRequest,
     CreateConversationRequest,
     LoadConversationsRequest,
+    SendInteractiveListRequest,
     SendMessageRequest,
     UploadAttachmentRequest,
     XChannelChatListItemDto,
@@ -34,11 +36,17 @@ export interface IChatApi {
     listSections(): Promise<ChatSection[]>;
     listConversations(filters?: ConversationListFilters): Promise<ConversationSummary[]>;
     createConversation(request: CreateConversationRequest): Promise<ConversationSummary>;
-    listMessages(chatGuid: string): Promise<ChatMessage[]>;
+    listMessages(chatGuid: string, options?: ListMessagesOptions): Promise<ChatMessage[]>;
     sendMessage(chatGuid: string, request: SendMessageRequest): Promise<ChatMessage>;
+    sendInteractiveList(chatGuid: string, request: SendInteractiveListRequest): Promise<ChatMessage>;
     uploadAttachment(chatGuid: string, request: UploadAttachmentRequest): Promise<ChatMessage>;
     retryMessage(chatGuid: string, messageGuid: string): Promise<XChannelMessageStatusUpdateDto>;
     closeConversation(chatGuid: string): Promise<ConversationSummary>;
+}
+
+export interface ListMessagesOptions {
+    take?: number;
+    beforeCreatedAt?: string;
 }
 
 export function createChatApi(config: ChatWidgetConfig): IChatApi {
@@ -103,10 +111,14 @@ class HttpChatApi implements IChatApi {
         return mapChatListItemDtoToConversation(item);
     }
 
-    async listMessages(chatGuid: string): Promise<ChatMessage[]> {
+    async listMessages(
+        chatGuid: string,
+        options: ListMessagesOptions = {}
+    ): Promise<ChatMessage[]> {
         const messages = await this.apiClient.post<XChannelMessageDto[]>('/LoadMessages', {
-            chatGuid,
-            take: 50,
+            ChatGuid: chatGuid,
+            Take: options.take ?? 50,
+            BeforeCreatedAt: options.beforeCreatedAt,
         });
         return (messages ?? []).map((message) => this.mapMessage(message));
     }
@@ -117,6 +129,20 @@ class HttpChatApi implements IChatApi {
             {
                 chatGuid,
                 ...request,
+            }
+        );
+        return this.mapMessage(message);
+    }
+
+    async sendInteractiveList(
+        chatGuid: string,
+        request: SendInteractiveListRequest
+    ): Promise<ChatMessage> {
+        const message = await this.apiClient.post<XChannelMessageDto>(
+            '/SendMessage',
+            {
+                ChatGuid: chatGuid,
+                Body: serializeInteractiveList(request.interactiveList),
             }
         );
         return this.mapMessage(message);
@@ -216,4 +242,23 @@ function mapCurrentUser(response: unknown): ChatMember | undefined {
     const currentUser = readDtoValue<XChannelChatMemberDto>(response, 'CurrentUser');
 
     return currentUser ? mapMemberDtoToChatMember(currentUser) : undefined;
+}
+
+function serializeInteractiveList(interactiveList: ChatInteractiveList): string {
+    return JSON.stringify({
+        type: 'interactive_list',
+        interactiveList: {
+            HeaderText: interactiveList.headerText,
+            BodyText: interactiveList.bodyText,
+            ButtonText: interactiveList.buttonText,
+            Sections: interactiveList.sections.map((section) => ({
+                Title: section.title,
+                Rows: section.rows.map((row) => ({
+                    Id: row.id,
+                    Title: row.title,
+                    Description: row.description,
+                })),
+            })),
+        },
+    });
 }

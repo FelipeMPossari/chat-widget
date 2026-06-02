@@ -10,6 +10,7 @@ import { createChatApi } from '../services/api/chatApi';
 import type { IChatApi } from '../services/api/chatApi';
 import type {
     BootstrapResponse,
+    ChatInteractiveList,
     ChatMessage,
     ChatSection,
     ChatTab,
@@ -43,6 +44,8 @@ interface ChatContextValue {
     messages: ChatMessage[];
     loading: boolean;
     conversationsLoading: boolean;
+    olderMessagesLoading: boolean;
+    hasMoreOlderMessages: boolean;
     sending: boolean;
     error: string;
     canUseConversationList: boolean;
@@ -54,7 +57,9 @@ interface ChatContextValue {
     createBlankConversation: () => Promise<void>;
     selectConversation: (conversation: ConversationSummary) => Promise<void>;
     backToConversations: () => void;
+    loadOlderMessages: () => Promise<void>;
     sendMessage: (text: string) => Promise<boolean>;
+    sendInteractiveList: (interactiveList: ChatInteractiveList) => Promise<boolean>;
     uploadAttachment: (file?: File) => Promise<void>;
     retryMessage: (message: ChatMessage) => Promise<boolean>;
     closeConversation: () => Promise<void>;
@@ -69,6 +74,7 @@ const DEFAULT_SETTINGS: WidgetSettings = {
     allowMultipleConversations: false,
     pollingIntervalMs: 5000,
 };
+const MESSAGE_PAGE_SIZE = 50;
 
 const ChatContext = createContext<ChatContextValue | null>(null);
 
@@ -89,6 +95,8 @@ export function ChatProvider({ children }: ChatProviderProps) {
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [loading, setLoading] = useState(false);
     const [conversationsLoading, setConversationsLoading] = useState(false);
+    const [olderMessagesLoading, setOlderMessagesLoading] = useState(false);
+    const [hasMoreOlderMessages, setHasMoreOlderMessages] = useState(false);
     const [sending, setSending] = useState(false);
     const [error, setError] = useState('');
     const toggleOpen = useCallback(() => setIsOpen((current) => !current), []);
@@ -121,6 +129,18 @@ export function ChatProvider({ children }: ChatProviderProps) {
             }
         },
         [api, selectedSection, selectedTab]
+    );
+
+    const loadInitialMessages = useCallback(
+        async (chatGuid: string) => {
+            const loadedMessages = await api.listMessages(chatGuid, {
+                take: MESSAGE_PAGE_SIZE,
+            });
+
+            setMessages(loadedMessages);
+            setHasMoreOlderMessages(loadedMessages.length === MESSAGE_PAGE_SIZE);
+        },
+        [api]
     );
 
     const initialize = useCallback(async () => {
@@ -177,18 +197,20 @@ export function ChatProvider({ children }: ChatProviderProps) {
                 const created = await api.createConversation({});
                 setConversations([created]);
                 setActiveConversation(created);
+                await loadInitialMessages(created.chatGuid);
                 return;
             }
 
             if (openConversation && !responseSettings.allowMultipleConversations) {
                 setActiveConversation(openConversation);
+                await loadInitialMessages(openConversation.chatGuid);
             }
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Nao foi possivel iniciar o chat.');
         } finally {
             setLoading(false);
         }
-    }, [api, bootstrap, config, loading]);
+    }, [api, bootstrap, config, loadInitialMessages, loading]);
 
     const selectSection = useCallback(
         async (section: ChatSection) => {
@@ -273,6 +295,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
                 const created = await api.createConversation(request);
                 setMessages([]);
                 setActiveConversation(created);
+                await loadInitialMessages(created.chatGuid);
                 await reloadConversations();
                 return true;
             } catch (err) {
@@ -282,7 +305,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
                 setSending(false);
             }
         },
-        [api, config.user?.email, config.user?.name, reloadConversations]
+        [api, config.user?.email, config.user?.name, loadInitialMessages, reloadConversations]
     );
 
     const createBlankConversation = useCallback(async () => {
@@ -293,18 +316,22 @@ export function ChatProvider({ children }: ChatProviderProps) {
             const created = await api.createConversation({ subject: 'Nova conversa' });
             setMessages([]);
             setActiveConversation(created);
+            await loadInitialMessages(created.chatGuid);
             await reloadConversations();
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Nao foi possivel criar a conversa.');
         } finally {
             setSending(false);
         }
-    }, [api, reloadConversations]);
+    }, [api, loadInitialMessages, reloadConversations]);
 
     const selectConversation = useCallback(
         async (conversation: ConversationSummary) => {
             if (!conversation.isVirtual) {
                 setActiveConversation(conversation);
+                setMessages([]);
+                setHasMoreOlderMessages(false);
+                await loadInitialMessages(conversation.chatGuid);
                 return;
             }
 
@@ -328,6 +355,8 @@ export function ChatProvider({ children }: ChatProviderProps) {
 
                 setMessages([]);
                 setActiveConversation(created);
+                setHasMoreOlderMessages(false);
+                await loadInitialMessages(created.chatGuid);
                 await reloadConversations();
             } catch (err) {
                 setError(err instanceof Error ? err.message : 'Nao foi possivel criar a conversa.');
@@ -335,13 +364,54 @@ export function ChatProvider({ children }: ChatProviderProps) {
                 setSending(false);
             }
         },
-        [api, reloadConversations]
+        [api, loadInitialMessages, reloadConversations]
     );
 
     const backToConversations = useCallback(() => {
         setActiveConversation(null);
         setMessages([]);
+        setHasMoreOlderMessages(false);
     }, []);
+
+    const loadOlderMessages = useCallback(async () => {
+        if (
+            !activeConversation ||
+            olderMessagesLoading ||
+            !hasMoreOlderMessages ||
+            messages.length === 0
+        ) {
+            return;
+        }
+
+        const oldestMessage = messages.reduce((oldest, message) =>
+            new Date(message.createdAt).getTime() < new Date(oldest.createdAt).getTime()
+                ? message
+                : oldest
+        );
+
+        setOlderMessagesLoading(true);
+        setError('');
+
+        try {
+            const olderMessages = await api.listMessages(activeConversation.chatGuid, {
+                take: MESSAGE_PAGE_SIZE,
+                beforeCreatedAt: oldestMessage.createdAt,
+            });
+
+            setMessages((current) => mergeMessages(olderMessages, current));
+            setHasMoreOlderMessages(olderMessages.length === MESSAGE_PAGE_SIZE);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Nao foi possivel carregar mensagens antigas.');
+        } finally {
+            setOlderMessagesLoading(false);
+        }
+    }, [
+        activeConversation,
+        api,
+        hasMoreOlderMessages,
+        messages,
+        olderMessagesLoading,
+    ]);
 
     const sendMessage = useCallback(
         async (text: string) => {
@@ -369,6 +439,32 @@ export function ChatProvider({ children }: ChatProviderProps) {
         [activeConversation, api, reloadConversations]
     );
 
+    const sendInteractiveList = useCallback(
+        async (interactiveList: ChatInteractiveList) => {
+            if (!activeConversation) {
+                return false;
+            }
+
+            setSending(true);
+            setError('');
+
+            try {
+                const message = await api.sendInteractiveList(activeConversation.chatGuid, {
+                    interactiveList,
+                });
+                setMessages((current) => [...current, message]);
+                await reloadConversations(activeConversation.chatGuid);
+                return true;
+            } catch (err) {
+                setError(err instanceof Error ? err.message : 'Nao foi possivel enviar a lista.');
+                return false;
+            } finally {
+                setSending(false);
+            }
+        },
+        [activeConversation, api, reloadConversations]
+    );
+
     const uploadAttachment = useCallback(
         async (file?: File) => {
             if (!activeConversation || !file) {
@@ -382,7 +478,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
                 const preparedFile = await prepareAttachmentFile(file);
                 await api.uploadAttachment(activeConversation.chatGuid, { file: preparedFile });
                 const refreshedMessages = await api.listMessages(activeConversation.chatGuid);
-                setMessages(refreshedMessages);
+                setMessages((current) => mergeMessages(current, refreshedMessages));
                 await reloadConversations(activeConversation.chatGuid);
             } catch (err) {
                 setError(err instanceof Error ? err.message : 'Nao foi possivel enviar o anexo.');
@@ -410,7 +506,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
 
                 await api.retryMessage(activeConversation.chatGuid, message.id);
                 const refreshedMessages = await api.listMessages(activeConversation.chatGuid);
-                setMessages(refreshedMessages);
+                setMessages((current) => mergeMessages(current, refreshedMessages));
                 await reloadConversations(activeConversation.chatGuid);
                 return true;
             } catch (err) {
@@ -443,11 +539,22 @@ export function ChatProvider({ children }: ChatProviderProps) {
         }
     }, [activeConversation, api, reloadConversations]);
 
+    const handleRealtimeMessages = useCallback((realtimeMessages: ChatMessage[]) => {
+        setMessages((current) => {
+            if (current.length === 0) {
+                setHasMoreOlderMessages(realtimeMessages.length === MESSAGE_PAGE_SIZE);
+                return realtimeMessages;
+            }
+
+            return mergeMessages(current, realtimeMessages);
+        });
+    }, []);
+
     useRealtime({
         api,
         chatGuid: activeConversation?.chatGuid,
         intervalMs: settings.pollingIntervalMs,
-        onMessages: setMessages,
+        onMessages: handleRealtimeMessages,
     });
 
     const value = useMemo<ChatContextValue>(
@@ -465,6 +572,8 @@ export function ChatProvider({ children }: ChatProviderProps) {
             messages,
             loading,
             conversationsLoading,
+            olderMessagesLoading,
+            hasMoreOlderMessages,
             sending,
             error,
             canUseConversationList,
@@ -476,7 +585,9 @@ export function ChatProvider({ children }: ChatProviderProps) {
             createBlankConversation,
             selectConversation,
             backToConversations,
+            loadOlderMessages,
             sendMessage,
+            sendInteractiveList,
             uploadAttachment,
             retryMessage,
             closeConversation,
@@ -491,10 +602,13 @@ export function ChatProvider({ children }: ChatProviderProps) {
             conversationsLoading,
             createBlankConversation,
             error,
+            hasMoreOlderMessages,
             initialize,
             isOpen,
+            loadOlderMessages,
             loading,
             messages,
+            olderMessagesLoading,
             sections,
             selectConversation,
             selectedSection,
@@ -503,6 +617,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
             selectTab,
             openNewConversationPicker,
             sendMessage,
+            sendInteractiveList,
             sending,
             settings,
             startConversation,
@@ -559,4 +674,33 @@ function toBootstrapUserContext(user?: WidgetUserContext): WidgetUserContext | u
     };
 
     return context.externalUserId || context.name || context.email ? context : undefined;
+}
+
+function mergeMessages(
+    currentMessages: ChatMessage[],
+    nextMessages: ChatMessage[]
+): ChatMessage[] {
+    const messagesById = new Map<string, ChatMessage>();
+
+    for (const message of currentMessages) {
+        messagesById.set(message.id, message);
+    }
+
+    for (const message of nextMessages) {
+        messagesById.set(message.id, {
+            ...(messagesById.get(message.id) ?? {}),
+            ...message,
+        });
+    }
+
+    return Array.from(messagesById.values()).sort((left, right) => {
+        const leftTime = new Date(left.createdAt).getTime();
+        const rightTime = new Date(right.createdAt).getTime();
+
+        if (leftTime !== rightTime) {
+            return leftTime - rightTime;
+        }
+
+        return left.id.localeCompare(right.id);
+    });
 }

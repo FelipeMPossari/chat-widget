@@ -1,4 +1,4 @@
-import type { WidgetUserContext } from './index';
+import type { ChatInteractiveList, WidgetUserContext } from './index';
 
 export type XChannelChatChannel = 'xchannel' | 'chat' | 'whatsapp' | 'instagram';
 
@@ -19,6 +19,10 @@ export interface CreateConversationRequest {
 
 export interface SendMessageRequest {
   text: string;
+}
+
+export interface SendInteractiveListRequest {
+  interactiveList: ChatInteractiveList;
 }
 
 export interface UploadAttachmentRequest {
@@ -160,11 +164,17 @@ export interface XChannelChatInteractiveListItemDto {
 export interface XChannelChatInteractiveListSectionDto {
   Title?: string;
   title?: string;
+  Rows?: XChannelChatInteractiveListItemDto[];
+  rows?: XChannelChatInteractiveListItemDto[];
   Items?: XChannelChatInteractiveListItemDto[];
   items?: XChannelChatInteractiveListItemDto[];
 }
 
 export interface XChannelChatInteractiveListDto {
+  HeaderText?: string;
+  headerText?: string;
+  BodyText?: string;
+  bodyText?: string;
   Title?: string;
   title?: string;
   Body?: string;

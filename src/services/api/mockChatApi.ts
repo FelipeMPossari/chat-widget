@@ -1,5 +1,6 @@
 import type {
     BootstrapResponse,
+    ChatInteractiveList,
     ChatSection,
     ChatMessage,
     ConversationListFilters,
@@ -8,6 +9,7 @@ import type {
 import type {
     BootstrapRequest,
     CreateConversationRequest,
+    SendInteractiveListRequest,
     SendMessageRequest,
     UploadAttachmentRequest,
     XChannelChatDestinationDto,
@@ -17,6 +19,7 @@ import type {
     XChannelMessageDto,
 } from '../../types/api';
 import type { IChatApi } from './chatApi';
+import type { ListMessagesOptions } from './chatApi';
 import {
     mapChatListItemDtoToConversation,
     mapMemberDtoToChatMember,
@@ -139,9 +142,24 @@ export class MockChatApi implements IChatApi {
         return mapChatListItemDtoToConversation(conversation);
     }
 
-    async listMessages(chatGuid: string): Promise<ChatMessage[]> {
+    async listMessages(
+        chatGuid: string,
+        options: ListMessagesOptions = {}
+    ): Promise<ChatMessage[]> {
         await delay(160);
-        return (this.messagesByConversation.get(chatGuid) ?? []).map((message) =>
+        const take = options.take ?? 50;
+        const beforeTime = options.beforeCreatedAt
+            ? new Date(options.beforeCreatedAt).getTime()
+            : Number.POSITIVE_INFINITY;
+        const messages = this.messagesByConversation.get(chatGuid) ?? [];
+
+        return messages
+            .filter((message) => {
+                const createdAt = readDtoValue<string>(message, 'CreatedAt');
+                return new Date(createdAt ?? 0).getTime() < beforeTime;
+            })
+            .slice(-take)
+            .map((message) =>
             this.mapMessage(message)
         );
     }
@@ -174,6 +192,31 @@ export class MockChatApi implements IChatApi {
             this.appendMessage(chatGuid, reply);
             this.touchConversation(chatGuid, readDtoValue<string>(reply, 'Body'));
         }, 1200);
+
+        return this.mapMessage(message);
+    }
+
+    async sendInteractiveList(
+        chatGuid: string,
+        request: SendInteractiveListRequest
+    ): Promise<ChatMessage> {
+        await delay(180);
+
+        const body = serializeInteractiveList(request.interactiveList);
+        const message = createMessageDto(chatGuid, {
+            senderName: this.currentRequest?.user?.name || 'Visitante',
+            senderType: this.currentUserMember ? 'Usuario' : 'Visitante',
+            senderId: readDtoValue<number>(this.currentUserMember, 'Id'),
+            senderUserChatId: readDtoValue<number>(this.currentUserMember, 'UserChatId'),
+            externalId:
+                this.currentRequest?.user?.externalUserId ?? this.currentRequest?.visitorId,
+            body,
+            interactiveList: request.interactiveList,
+            status: 'sent',
+        });
+
+        this.appendMessage(chatGuid, message);
+        this.touchConversation(chatGuid, request.interactiveList.bodyText);
 
         return this.mapMessage(message);
     }
@@ -434,6 +477,7 @@ interface CreateMessageDtoParams {
     createdAt?: string;
     status?: string;
     attachment?: XChannelMessageDto['Attachment'];
+    interactiveList?: ChatInteractiveList;
 }
 
 const MOCK_SECTIONS: ChatSection[] = [
@@ -611,7 +655,41 @@ function createMessageDto(
         CreatedAt: params.createdAt ?? new Date().toISOString(),
         Status: params.status,
         Attachment: params.attachment,
+        InteractiveList: params.interactiveList
+            ? {
+                HeaderText: params.interactiveList.headerText,
+                BodyText: params.interactiveList.bodyText,
+                ButtonText: params.interactiveList.buttonText,
+                Sections: params.interactiveList.sections.map((section) => ({
+                    Title: section.title,
+                    Rows: section.rows.map((row) => ({
+                        Id: row.id,
+                        Title: row.title,
+                        Description: row.description,
+                    })),
+                })),
+            }
+            : undefined,
     };
+}
+
+function serializeInteractiveList(interactiveList: ChatInteractiveList): string {
+    return JSON.stringify({
+        type: 'interactive_list',
+        interactiveList: {
+            HeaderText: interactiveList.headerText,
+            BodyText: interactiveList.bodyText,
+            ButtonText: interactiveList.buttonText,
+            Sections: interactiveList.sections.map((section) => ({
+                Title: section.title,
+                Rows: section.rows.map((row) => ({
+                    Id: row.id,
+                    Title: row.title,
+                    Description: row.description,
+                })),
+            })),
+        },
+    });
 }
 
 function delay(ms: number): Promise<void> {

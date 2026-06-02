@@ -9,7 +9,10 @@ export function ActiveChat() {
         backToConversations,
         canUseConversationList,
         error,
+        hasMoreOlderMessages,
+        loadOlderMessages,
         messages,
+        olderMessagesLoading,
     } = useChat();
 
     return (
@@ -31,7 +34,12 @@ export function ActiveChat() {
                 <span className="xwc-chat-name">{activeConversation?.title}</span>
             </div>
 
-            <MessageList messages={messages} />
+            <MessageList
+                messages={messages}
+                hasMoreOlderMessages={hasMoreOlderMessages}
+                olderMessagesLoading={olderMessagesLoading}
+                onLoadOlderMessages={loadOlderMessages}
+            />
 
             {error && <div className="xwc-error">{error}</div>}
 
@@ -39,4 +47,3 @@ export function ActiveChat() {
         </div>
     );
 }
-

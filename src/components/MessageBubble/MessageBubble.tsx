@@ -1,5 +1,5 @@
-import { type ReactNode, useState } from 'react';
-import { Check, CheckCheck, Clock3, Paperclip, TriangleAlert, X } from 'lucide-react';
+import { type ChangeEvent, type ReactNode, useRef, useState } from 'react';
+import { Check, CheckCheck, Clock3, Paperclip, Pause, Play, TriangleAlert, X } from 'lucide-react';
 import type { ChatAttachment, ChatMessage } from '../../types';
 import { formatTime } from '../../utils/formatters';
 import { useChat } from '../../hooks/useChat';
@@ -13,7 +13,9 @@ export function MessageBubble({ message }: MessageBubbleProps) {
     const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
     const hasAttachments = !!message.attachments?.length;
     const shouldRenderText =
-        !!message.text && !(hasAttachments && isAttachmentPlaceholderText(message.text, message.attachments ?? []));
+        !message.interactiveList &&
+        !!message.text &&
+        !(hasAttachments && isAttachmentPlaceholderText(message.text, message.attachments ?? []));
     const status = normalizeStatus(message.status);
     const statusLabel = getStatusLabel(status);
     const statusIcon = getStatusIcon(status);
@@ -57,6 +59,9 @@ export function MessageBubble({ message }: MessageBubbleProps) {
                 {shouldRenderText ? (
                     <div className="xwc-message-text">{message.text}</div>
                 ) : null}
+                {message.interactiveList ? (
+                    <InteractiveListMessage message={message} />
+                ) : null}
                 {message.attachments?.map((attachment) => (
                     isImageAttachment(attachment) ? (
                         <a
@@ -74,6 +79,8 @@ export function MessageBubble({ message }: MessageBubbleProps) {
                                 loading="lazy"
                             />
                         </a>
+                    ) : isAudioAttachment(attachment) ? (
+                        <AudioAttachment attachment={attachment} key={attachment.id} />
                     ) : (
                         <a
                             className="xwc-attachment"
@@ -153,6 +160,137 @@ export function MessageBubble({ message }: MessageBubbleProps) {
     );
 }
 
+function InteractiveListMessage({ message }: { message: ChatMessage }) {
+    const interactiveList = message.interactiveList;
+
+    if (!interactiveList) {
+        return null;
+    }
+
+    return (
+        <div className="xwc-interactive-list-message">
+            {interactiveList.headerText ? (
+                <div className="xwc-interactive-list-header">{interactiveList.headerText}</div>
+            ) : null}
+            <div className="xwc-interactive-list-body">{interactiveList.bodyText}</div>
+            <div className="xwc-interactive-list-card">
+                <div className="xwc-interactive-list-button">{interactiveList.buttonText || 'Ver opções'}</div>
+                {interactiveList.sections.map((section, sectionIndex) => (
+                    <div className="xwc-interactive-list-section" key={`${section.title ?? 'section'}-${sectionIndex}`}>
+                        {section.title ? (
+                            <div className="xwc-interactive-list-section-title">{section.title}</div>
+                        ) : null}
+                        {section.rows.map((row, rowIndex) => (
+                            <div className="xwc-interactive-list-row" key={row.id ?? `${sectionIndex}-${rowIndex}`}>
+                                <div className="xwc-interactive-list-row-title">{row.title}</div>
+                                {row.description ? (
+                                    <div className="xwc-interactive-list-row-description">{row.description}</div>
+                                ) : null}
+                            </div>
+                        ))}
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+function AudioAttachment({ attachment }: { attachment: ChatAttachment }) {
+    const audioRef = useRef<HTMLAudioElement | null>(null);
+    const [isPlaying, setIsPlaying] = useState(false);
+    const [currentTime, setCurrentTime] = useState(0);
+    const [duration, setDuration] = useState(0);
+    const [error, setError] = useState('');
+
+    function togglePlayback() {
+        const audio = audioRef.current;
+
+        if (!audio || !attachment.url) {
+            return;
+        }
+
+        if (!audio.paused) {
+            audio.pause();
+            return;
+        }
+
+        setError('');
+        audio.play().catch(() => {
+            setError('Nao foi possivel reproduzir este audio.');
+            setIsPlaying(false);
+        });
+    }
+
+    function seekAudio(event: ChangeEvent<HTMLInputElement>) {
+        const audio = audioRef.current;
+        const time = Number(event.target.value);
+
+        if (!audio || !Number.isFinite(time)) {
+            return;
+        }
+
+        audio.currentTime = time;
+        setCurrentTime(time);
+    }
+
+    return (
+        <div className="xwc-audio-attachment">
+            <audio
+                ref={audioRef}
+                preload="metadata"
+                src={attachment.url}
+                onLoadedMetadata={(event) => setDuration(event.currentTarget.duration || 0)}
+                onDurationChange={(event) => setDuration(event.currentTarget.duration || 0)}
+                onTimeUpdate={(event) => {
+                    setCurrentTime(event.currentTarget.currentTime || 0);
+                    setDuration(event.currentTarget.duration || duration || 0);
+                }}
+                onPlay={() => setIsPlaying(true)}
+                onPause={() => setIsPlaying(false)}
+                onEnded={(event) => {
+                    event.currentTarget.currentTime = 0;
+                    setCurrentTime(0);
+                    setIsPlaying(false);
+                }}
+                onError={() => {
+                    setError('Formato de audio nao suportado pelo navegador.');
+                    setIsPlaying(false);
+                }}
+            />
+            <div className="xwc-audio-player">
+                <button
+                    className="xwc-audio-play-button"
+                    type="button"
+                    title={isPlaying ? 'Pausar audio' : 'Reproduzir audio'}
+                    aria-label={isPlaying ? 'Pausar audio' : 'Reproduzir audio'}
+                    disabled={!attachment.url}
+                    onClick={togglePlayback}
+                >
+                    {isPlaying ? <Pause size={16} /> : <Play size={16} />}
+                </button>
+                <div className="xwc-audio-content">
+                    <input
+                        className="xwc-audio-progress"
+                        type="range"
+                        min="0"
+                        step="0.1"
+                        max={duration || 0}
+                        value={currentTime}
+                        disabled={!duration}
+                        style={{ background: getAudioProgressBackground(currentTime, duration) }}
+                        onChange={seekAudio}
+                    />
+                    <div className="xwc-audio-times">
+                        <span>{formatAudioTime(currentTime)}</span>
+                        <span>{formatAudioTime(duration)}</span>
+                    </div>
+                </div>
+            </div>
+            {error ? <div className="xwc-audio-error">{error}</div> : null}
+        </div>
+    );
+}
+
 function isImageAttachment(attachment: ChatAttachment): boolean {
     const contentType = attachment.contentType.toLowerCase();
     const fileName = attachment.fileName.toLowerCase();
@@ -170,6 +308,27 @@ function isImageAttachment(attachment: ChatAttachment): boolean {
         url.endsWith('.jpg') ||
         url.endsWith('.jpeg') ||
         url.endsWith('.gif')
+    );
+}
+
+function isAudioAttachment(attachment: ChatAttachment): boolean {
+    const contentType = attachment.contentType.toLowerCase();
+    const fileName = attachment.fileName.toLowerCase();
+    const url = attachment.url.toLowerCase();
+
+    return (
+        contentType.startsWith('audio/') ||
+        fileName.endsWith('.ogg') ||
+        fileName.endsWith('.oga') ||
+        fileName.endsWith('.webm') ||
+        fileName.endsWith('.m4a') ||
+        fileName.endsWith('.mp3') ||
+        url.includes('audio') ||
+        url.endsWith('.ogg') ||
+        url.endsWith('.oga') ||
+        url.endsWith('.webm') ||
+        url.endsWith('.m4a') ||
+        url.endsWith('.mp3')
     );
 }
 
@@ -252,6 +411,26 @@ function getFailureDetails(message: ChatMessage): { message: string; code?: stri
     };
 }
 
+function getAudioProgressBackground(currentTime: number, duration: number): string {
+    const progress =
+        duration > 0
+            ? Math.min(100, Math.max(0, (currentTime / duration) * 100))
+            : 0;
+
+    return `linear-gradient(to right, rgba(255,255,255,0.92) 0%, rgba(255,255,255,0.92) ${progress}%, rgba(255,255,255,0.24) ${progress}%, rgba(255,255,255,0.24) 100%)`;
+}
+
+function formatAudioTime(value: number): string {
+    if (!Number.isFinite(value) || value <= 0) {
+        return '0:00';
+    }
+
+    const minutes = Math.floor(value / 60);
+    const seconds = Math.floor(value % 60).toString().padStart(2, '0');
+
+    return `${minutes}:${seconds}`;
+}
+
 function getMessageError(message: ChatMessage): unknown {
     const raw = message.raw as Record<string, unknown> | undefined;
 
@@ -268,4 +447,3 @@ function readErrorText(error: unknown, key: string): string {
 
     return typeof value === 'string' ? value.trim() : '';
 }
-

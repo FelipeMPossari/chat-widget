@@ -87,6 +87,7 @@ export interface ChatDestination {
 export interface ConversationSummary {
   chatGuid: string;
   title: string;
+  channel?: string;
   status: ConversationStatus;
   lastMessage?: string;
   lastMessageAt?: string;
@@ -105,6 +106,24 @@ export interface ChatAttachment {
   size: number;
 }
 
+export interface ChatInteractiveListRow {
+  id?: string;
+  title?: string;
+  description?: string;
+}
+
+export interface ChatInteractiveListSection {
+  title?: string;
+  rows: ChatInteractiveListRow[];
+}
+
+export interface ChatInteractiveList {
+  headerText?: string;
+  bodyText: string;
+  buttonText: string;
+  sections: ChatInteractiveListSection[];
+}
+
 export interface ChatMessage {
   id: string;
   chatGuid: string;
@@ -112,6 +131,7 @@ export interface ChatMessage {
   authorName?: string;
   text?: string;
   attachments?: ChatAttachment[];
+  interactiveList?: ChatInteractiveList;
   createdAt: string;
   status?: string;
   raw?: unknown;
