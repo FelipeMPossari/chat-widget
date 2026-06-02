@@ -488,11 +488,28 @@
 .xwc-older-messages-loading {
     align-self: center;
     border-radius: 999px;
-    padding: 5px 10px;
+    padding: 6px;
     color: #667286;
     background: #e8eef6;
-    font-size: 11px;
-    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.xwc-spinner {
+    width: 20px;
+    height: 20px;
+    animation: xwc-spin 1s linear infinite;
+    display: block;
+}
+
+@keyframes xwc-spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 .xwc-scroll-bottom-button {
