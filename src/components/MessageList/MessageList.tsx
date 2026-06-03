@@ -1,6 +1,7 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { Fragment, useLayoutEffect, useRef, useState } from 'react';
 import { ArrowDown } from 'lucide-react';
 import type { ChatMessage } from '../../types';
+import { formatDateKey, formatLongDate } from '../../utils/formatters';
 import { MessageBubble } from '../MessageBubble/MessageBubble';
 import { EmptyState } from '../shared/EmptyState';
 
@@ -135,7 +136,14 @@ export function MessageList({
         {messages.length === 0 ? (
           <EmptyState message="Nenhuma mensagem ainda." />
         ) : (
-          messages.map((message) => <MessageBubble message={message} key={message.id} />)
+          messages.map((message, index) => (
+            <Fragment key={message.id}>
+              {shouldShowDateSeparator(messages, index) ? (
+                <DateSeparator value={message.createdAt} />
+              ) : null}
+              <MessageBubble message={message} />
+            </Fragment>
+          ))
         )}
       </div>
 
@@ -151,6 +159,33 @@ export function MessageList({
         </button>
       ) : null}
     </div>
+  );
+}
+
+function DateSeparator({ value }: { value?: string }) {
+  const label = formatLongDate(value);
+
+  if (!label) {
+    return null;
+  }
+
+  return (
+    <div className="xwc-date-separator" aria-label={label}>
+      <div className="xwc-date-separator-line" />
+      <div className="xwc-date-separator-label">{label}</div>
+      <div className="xwc-date-separator-line" />
+    </div>
+  );
+}
+
+function shouldShowDateSeparator(messages: ChatMessage[], index: number): boolean {
+  if (index === 0) {
+    return true;
+  }
+
+  return (
+    formatDateKey(messages[index - 1]?.createdAt) !==
+    formatDateKey(messages[index]?.createdAt)
   );
 }
 

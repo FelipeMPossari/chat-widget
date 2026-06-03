@@ -503,6 +503,32 @@
     display: block;
 }
 
+.xwc-date-separator {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    margin: 10px 0;
+    color: #334155;
+}
+
+.xwc-date-separator-line {
+    flex: 1 1 auto;
+    border-bottom: 1px solid #dce3ed;
+}
+
+.xwc-date-separator-label {
+    flex: 0 0 auto;
+    max-width: min(260px, 72%);
+    color: #334155;
+    overflow-wrap: anywhere;
+    text-align: center;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.35;
+}
+
 @keyframes xwc-spin {
     from {
         transform: rotate(0deg);
