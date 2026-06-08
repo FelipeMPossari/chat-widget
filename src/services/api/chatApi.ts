@@ -4,7 +4,6 @@ import type {
     ChatSection,
     ChatMessage,
     ChatInteractiveList,
-    ChatContactType,
     ContactListFilters,
     ConversationListFilters,
     ConversationSummary,
@@ -33,13 +32,6 @@ import {
     readDtoValue,
 } from './chatMappers';
 import { MockChatApi } from './mockChatApi';
-
-const CONTACT_TYPES: Exclude<ChatContactType, 'todos'>[] = [
-    'usuarios',
-    'pessoas',
-    'whatsapp',
-    'instagram',
-];
 
 export interface IChatApi {
     bootstrap(request: BootstrapRequest): Promise<BootstrapResponse>;
@@ -115,19 +107,6 @@ class HttpChatApi implements IChatApi {
     }
 
     async listContacts(filters: ContactListFilters): Promise<ConversationSummary[]> {
-        if (filters.contactType === 'todos') {
-            const contactsByType = await Promise.all(
-                CONTACT_TYPES.map((contactType) =>
-                    this.listContacts({
-                        ...filters,
-                        contactType,
-                    })
-                )
-            );
-
-            return dedupeConversations(contactsByType.flat());
-        }
-
         const items = await this.apiClient.post<XChannelChatListItemDto[]>(
             '/LoadContacts',
             toLoadContactsRequest(filters)
