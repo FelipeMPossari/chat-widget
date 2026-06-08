@@ -58,7 +58,8 @@
 .xwc-secondary-button:focus-visible,
 .xwc-message-input textarea:focus-visible,
 .xwc-field input:focus-visible,
-.xwc-field textarea:focus-visible {
+.xwc-field textarea:focus-visible,
+.xwc-search-field input:focus-visible {
     outline: 3px solid color-mix(in srgb, var(--xwc-theme, #2688c7), transparent 66%);
     outline-offset: 2px;
 }
@@ -265,6 +266,10 @@
     grid-template-rows: auto minmax(0, 1fr);
 }
 
+.xwc-contact-picker-list {
+    grid-template-rows: auto auto minmax(0, 1fr);
+}
+
 .xwc-list-toolbar {
     display: flex;
     justify-content: flex-end;
@@ -281,6 +286,84 @@
     background: #fff;
 }
 
+.xwc-contact-picker-header {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 10px;
+    align-items: center;
+    padding: 12px;
+    border-bottom: 1px solid #dce3ed;
+    background: #fff;
+}
+
+.xwc-contact-picker-header strong {
+    overflow: hidden;
+    color: #18212f;
+    font-size: 15px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.xwc-contact-back {
+    color: #425066;
+    background: #f1f5f9;
+}
+
+.xwc-contact-back:hover {
+    background: #e8eef6;
+}
+
+.xwc-contact-filters {
+    display: grid;
+    gap: 8px;
+    padding: 10px 12px 8px;
+    border-bottom: 1px solid #dce3ed;
+    background: #fff;
+}
+
+.xwc-search-field {
+    min-width: 0;
+    height: 38px;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 8px;
+    align-items: center;
+    border: 1px solid #ccd6e3;
+    border-radius: 8px;
+    padding: 0 10px;
+    color: #667286;
+    background: #fff;
+}
+
+.xwc-search-field input {
+    min-width: 0;
+    border: 0;
+    padding: 0;
+    color: #18212f;
+    background: transparent;
+    font: inherit;
+}
+
+.xwc-search-field input:focus {
+    outline: 0;
+}
+
+.xwc-contact-avatar {
+    width: 38px;
+    height: 38px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    color: #425066;
+    background: #e8eef6;
+}
+
+.xwc-contact-picker-header + .xwc-contact-filters + .xwc-conversations .xwc-conversation {
+    grid-template-columns: auto minmax(0, 1fr);
+}
+
 .xwc-filter-header {
     min-width: 0;
     display: grid;
@@ -294,8 +377,19 @@
     min-width: 0;
     display: flex;
     gap: 6px;
+    align-items: center;
     overflow-x: auto;
     scrollbar-width: none;
+}
+
+.xwc-contact-filters .xwc-section-tabs {
+    flex-wrap: wrap;
+}
+
+.xwc-contact-filters .xwc-filter-button {
+    height: 30px;
+    min-height: 30px;
+    padding: 0 10px;
 }
 
 .xwc-section-tabs::-webkit-scrollbar,

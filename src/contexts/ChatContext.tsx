@@ -14,6 +14,7 @@ import type {
     ChatMessage,
     ChatSection,
     ChatTab,
+    ContactListFilters,
     ConversationListFilters,
     ConversationSummary,
     WidgetUserContext,
@@ -40,10 +41,13 @@ interface ChatContextValue {
     selectedSection: ChatSection | null;
     selectedTab: ChatTab | null;
     conversations: ConversationSummary[];
+    contacts: ConversationSummary[];
     activeConversation: ConversationSummary | null;
     messages: ChatMessage[];
     loading: boolean;
     conversationsLoading: boolean;
+    contactsLoading: boolean;
+    contactPickerOpen: boolean;
     olderMessagesLoading: boolean;
     hasMoreOlderMessages: boolean;
     sending: boolean;
@@ -53,6 +57,8 @@ interface ChatContextValue {
     selectSection: (section: ChatSection) => Promise<void>;
     selectTab: (tab: ChatTab) => Promise<void>;
     openNewConversationPicker: () => Promise<void>;
+    closeNewConversationPicker: () => void;
+    loadContacts: (filters: ContactListFilters) => Promise<void>;
     startConversation: (input: StartConversationInput) => Promise<boolean>;
     createBlankConversation: () => Promise<void>;
     selectConversation: (conversation: ConversationSummary) => Promise<void>;
@@ -91,10 +97,13 @@ export function ChatProvider({ children }: ChatProviderProps) {
     const [selectedSection, setSelectedSection] = useState<ChatSection | null>(null);
     const [selectedTab, setSelectedTab] = useState<ChatTab | null>(null);
     const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+    const [contacts, setContacts] = useState<ConversationSummary[]>([]);
     const [activeConversation, setActiveConversation] = useState<ConversationSummary | null>(null);
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [loading, setLoading] = useState(false);
     const [conversationsLoading, setConversationsLoading] = useState(false);
+    const [contactsLoading, setContactsLoading] = useState(false);
+    const [contactPickerOpen, setContactPickerOpen] = useState(false);
     const [olderMessagesLoading, setOlderMessagesLoading] = useState(false);
     const [hasMoreOlderMessages, setHasMoreOlderMessages] = useState(false);
     const [sending, setSending] = useState(false);
@@ -255,31 +264,34 @@ export function ChatProvider({ children }: ChatProviderProps) {
         [reloadConversations, selectedSection]
     );
 
+    const loadContacts = useCallback(
+        async (filters: ContactListFilters) => {
+            setContactsLoading(true);
+            setError('');
+
+            try {
+                const loadedContacts = await api.listContacts(filters);
+                setContacts(loadedContacts);
+            } catch (err) {
+                setError(err instanceof Error ? err.message : 'Nao foi possivel carregar os contatos.');
+            } finally {
+                setContactsLoading(false);
+            }
+        },
+        [api]
+    );
+
     const openNewConversationPicker = useCallback(async () => {
-        const chatSection = findSectionByName(sections, 'Chat') ?? sections[0];
-        const usersTab = findTabByName(chatSection, 'Usuarios') ?? getInitialTab(chatSection);
-
-        if (!chatSection || !usersTab) {
-            setError('Nao foi possivel carregar a lista de usuarios.');
-            return;
-        }
-
-        setSelectedSection(chatSection);
-        setSelectedTab(usersTab);
-        setConversationsLoading(true);
+        setContactPickerOpen(true);
+        setContacts([]);
         setError('');
+    }, []);
 
-        try {
-            await reloadConversations(undefined, {
-                section: chatSection,
-                tab: usersTab,
-            });
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'Nao foi possivel carregar os usuarios.');
-        } finally {
-            setConversationsLoading(false);
-        }
-    }, [reloadConversations, sections]);
+    const closeNewConversationPicker = useCallback(() => {
+        setContactPickerOpen(false);
+        setContacts([]);
+        setError('');
+    }, []);
 
     const startConversation = useCallback(
         async (input: StartConversationInput) => {
@@ -328,6 +340,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
     const selectConversation = useCallback(
         async (conversation: ConversationSummary) => {
             if (!conversation.isVirtual) {
+                setContactPickerOpen(false);
                 setActiveConversation(conversation);
                 setMessages([]);
                 setHasMoreOlderMessages(false);
@@ -355,6 +368,8 @@ export function ChatProvider({ children }: ChatProviderProps) {
 
                 setMessages([]);
                 setActiveConversation(created);
+                setContactPickerOpen(false);
+                setContacts([]);
                 setHasMoreOlderMessages(false);
                 await loadInitialMessages(created.chatGuid);
                 await reloadConversations();
@@ -568,10 +583,13 @@ export function ChatProvider({ children }: ChatProviderProps) {
             selectedSection,
             selectedTab,
             conversations,
+            contacts,
             activeConversation,
             messages,
             loading,
             conversationsLoading,
+            contactsLoading,
+            contactPickerOpen,
             olderMessagesLoading,
             hasMoreOlderMessages,
             sending,
@@ -581,6 +599,8 @@ export function ChatProvider({ children }: ChatProviderProps) {
             selectSection,
             selectTab,
             openNewConversationPicker,
+            closeNewConversationPicker,
+            loadContacts,
             startConversation,
             createBlankConversation,
             selectConversation,
@@ -600,12 +620,17 @@ export function ChatProvider({ children }: ChatProviderProps) {
             closeConversation,
             conversations,
             conversationsLoading,
+            contacts,
+            contactsLoading,
+            contactPickerOpen,
+            closeNewConversationPicker,
             createBlankConversation,
             error,
             hasMoreOlderMessages,
             initialize,
             isOpen,
             loadOlderMessages,
+            loadContacts,
             loading,
             messages,
             olderMessagesLoading,
@@ -642,24 +667,6 @@ export function useChatContext() {
 
 function getInitialTab(section?: ChatSection | null): ChatTab | null {
     return section?.tabs?.[0] ?? null;
-}
-
-function findSectionByName(sections: ChatSection[], name: string): ChatSection | undefined {
-    const normalizedName = normalizeLabel(name);
-    return sections.find((section) => normalizeLabel(section.name) === normalizedName);
-}
-
-function findTabByName(section: ChatSection | undefined, name: string): ChatTab | undefined {
-    const normalizedName = normalizeLabel(name);
-    return section?.tabs?.find((tab) => normalizeLabel(tab.name) === normalizedName);
-}
-
-function normalizeLabel(value: string): string {
-    return value
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .trim()
-        .toLowerCase();
 }
 
 function toBootstrapUserContext(user?: WidgetUserContext): WidgetUserContext | undefined {

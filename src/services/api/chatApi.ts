@@ -4,6 +4,8 @@ import type {
     ChatSection,
     ChatMessage,
     ChatInteractiveList,
+    ChatContactType,
+    ContactListFilters,
     ConversationListFilters,
     ConversationSummary,
 } from '../../types';
@@ -11,6 +13,7 @@ import type { ChatWidgetConfig, WidgetUserContext } from '../../types';
 import type {
     BootstrapRequest,
     CreateConversationRequest,
+    LoadContactsRequest,
     LoadConversationsRequest,
     SendInteractiveListRequest,
     SendMessageRequest,
@@ -31,10 +34,18 @@ import {
 } from './chatMappers';
 import { MockChatApi } from './mockChatApi';
 
+const CONTACT_TYPES: Exclude<ChatContactType, 'todos'>[] = [
+    'usuarios',
+    'pessoas',
+    'whatsapp',
+    'instagram',
+];
+
 export interface IChatApi {
     bootstrap(request: BootstrapRequest): Promise<BootstrapResponse>;
     listSections(): Promise<ChatSection[]>;
     listConversations(filters?: ConversationListFilters): Promise<ConversationSummary[]>;
+    listContacts(filters: ContactListFilters): Promise<ConversationSummary[]>;
     createConversation(request: CreateConversationRequest): Promise<ConversationSummary>;
     listMessages(chatGuid: string, options?: ListMessagesOptions): Promise<ChatMessage[]>;
     sendMessage(chatGuid: string, request: SendMessageRequest): Promise<ChatMessage>;
@@ -100,7 +111,34 @@ class HttpChatApi implements IChatApi {
             '/LoadConversations',
             toLoadConversationsRequest(filters)
         );
-        return (items ?? []).map(mapChatListItemDtoToConversation);
+        return dedupeConversations((items ?? []).map(mapChatListItemDtoToConversation));
+    }
+
+    async listContacts(filters: ContactListFilters): Promise<ConversationSummary[]> {
+        if (filters.contactType === 'todos') {
+            const contactsByType = await Promise.all(
+                CONTACT_TYPES.map((contactType) =>
+                    this.listContacts({
+                        ...filters,
+                        contactType,
+                    })
+                )
+            );
+
+            return dedupeConversations(contactsByType.flat());
+        }
+
+        const items = await this.apiClient.post<XChannelChatListItemDto[]>(
+            '/LoadContacts',
+            toLoadContactsRequest(filters)
+        );
+
+        return dedupeConversations(
+            (items ?? []).map((item) => ({
+                ...mapChatListItemDtoToConversation(item),
+                isVirtual: true,
+            }))
+        );
     }
 
     async createConversation(request: CreateConversationRequest): Promise<ConversationSummary> {
@@ -200,6 +238,73 @@ function toLoadConversationsRequest(
         SearchTerm: filters.searchTerm?.trim() || '',
         Take: 50,
     };
+}
+
+function toLoadContactsRequest(filters: ContactListFilters): LoadContactsRequest {
+    return {
+        ContactType: filters.contactType === 'todos' ? '' : filters.contactType,
+        SearchTerm: filters.searchTerm?.trim() || '',
+        Take: 100,
+    };
+}
+
+function dedupeConversations(conversations: ConversationSummary[]): ConversationSummary[] {
+    const byKey = new Map<string, ConversationSummary>();
+
+    for (const conversation of conversations) {
+        const key = getConversationDedupeKey(conversation);
+        const existing = byKey.get(key);
+
+        if (!existing) {
+            byKey.set(key, conversation);
+            continue;
+        }
+
+        byKey.set(key, mergeConversationSummary(existing, conversation));
+    }
+
+    return Array.from(byKey.values());
+}
+
+function getConversationDedupeKey(conversation: ConversationSummary): string {
+    if (conversation.chatGuid) {
+        return `chat:${conversation.chatGuid.toLowerCase()}`;
+    }
+
+    const firstMember = conversation.members[0];
+    return [
+        'virtual',
+        conversation.title.trim().toLowerCase(),
+        `${firstMember?.userChatId ?? ''}`,
+        `${firstMember?.number ?? ''}`.trim().toLowerCase(),
+        `${firstMember?.externalId ?? ''}`.trim().toLowerCase(),
+    ].join(':');
+}
+
+function mergeConversationSummary(
+    current: ConversationSummary,
+    next: ConversationSummary
+): ConversationSummary {
+    return {
+        ...current,
+        ...next,
+        unreadCount: Math.max(current.unreadCount, next.unreadCount),
+        destinations: mergeDestinations(current.destinations, next.destinations),
+        members: next.members.length ? next.members : current.members,
+    };
+}
+
+function mergeDestinations(
+    current: ConversationSummary['destinations'],
+    next: ConversationSummary['destinations']
+): ConversationSummary['destinations'] {
+    const byKey = new Map<string, ConversationSummary['destinations'][number]>();
+
+    for (const destination of [...current, ...next]) {
+        byKey.set(`${destination.sectionGuid ?? ''}:${destination.tabGuid ?? ''}`, destination);
+    }
+
+    return Array.from(byKey.values());
 }
 
 export function toCreateConversationRequest(

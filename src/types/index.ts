@@ -68,6 +68,13 @@ export interface ConversationListFilters {
   searchTerm?: string;
 }
 
+export type ChatContactType = 'todos' | 'usuarios' | 'pessoas' | 'whatsapp' | 'instagram';
+
+export interface ContactListFilters {
+  contactType: ChatContactType;
+  searchTerm?: string;
+}
+
 export interface ChatMember {
   id?: number;
   userChatId?: number;

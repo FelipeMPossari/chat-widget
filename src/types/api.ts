@@ -94,6 +94,15 @@ export interface LoadConversationsRequest {
   take?: number;
 }
 
+export interface LoadContactsRequest {
+  ContactType?: string;
+  contactType?: string;
+  SearchTerm?: string;
+  searchTerm?: string;
+  Take?: number;
+  take?: number;
+}
+
 export interface XChannelChatListItemDto {
   IDUserBroadcast?: number;
   idUserBroadcast?: number;

@@ -1,12 +1,27 @@
-import { Plus } from 'lucide-react';
+import { ArrowLeft, MessageCircle, Plus, Search } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { useChat } from '../../hooks/useChat';
+import type { ChatContactType, ConversationSummary } from '../../types';
 import { formatTime } from '../../utils/formatters';
 import { EmptyState } from '../shared/EmptyState';
 
+const CONTACT_TYPES: { value: ChatContactType; label: string }[] = [
+  { value: 'todos', label: 'Todos' },
+  { value: 'usuarios', label: 'Usuários' },
+  { value: 'pessoas', label: 'Pessoas' },
+  { value: 'whatsapp', label: 'Whatsapp' },
+  { value: 'instagram', label: 'Instagram' },
+];
+
 export function ConversationList() {
   const {
+    closeNewConversationPicker,
+    contactPickerOpen,
+    contacts,
+    contactsLoading,
     conversations,
     conversationsLoading,
+    loadContacts,
     openNewConversationPicker,
     sections,
     selectedSection,
@@ -16,7 +31,98 @@ export function ConversationList() {
     selectTab,
     sending,
   } = useChat();
+  const [contactType, setContactType] = useState<ChatContactType>('todos');
+  const [contactSearchTerm, setContactSearchTerm] = useState('');
   const tabs = selectedSection?.tabs ?? [];
+
+  useEffect(() => {
+    if (!contactPickerOpen) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      void loadContacts({
+        contactType,
+        searchTerm: contactSearchTerm,
+      });
+    }, 250);
+
+    return () => window.clearTimeout(timeout);
+  }, [contactPickerOpen, contactSearchTerm, contactType, loadContacts]);
+
+  if (contactPickerOpen) {
+    return (
+      <div className="xwc-list xwc-contact-picker-list">
+        <div className="xwc-contact-picker-header">
+          <button
+            className="xwc-icon-button xwc-contact-back"
+            type="button"
+            title="Voltar"
+            aria-label="Voltar para conversas"
+            onClick={closeNewConversationPicker}
+          >
+            <ArrowLeft size={18} />
+          </button>
+          <strong>Novo chat</strong>
+        </div>
+
+        <div className="xwc-contact-filters">
+          <label className="xwc-search-field">
+            <Search size={16} />
+            <input
+              type="search"
+              value={contactSearchTerm}
+              placeholder="Buscar contatos"
+              onChange={(event) => setContactSearchTerm(event.target.value)}
+            />
+          </label>
+
+          <div className="xwc-section-tabs" role="tablist" aria-label="Tipos de contato">
+            {CONTACT_TYPES.map((type) => (
+              <button
+                className="xwc-filter-button"
+                data-active={contactType === type.value}
+                type="button"
+                key={type.value}
+                disabled={contactsLoading}
+                onClick={() => setContactType(type.value)}
+              >
+                {type.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="xwc-conversations" aria-busy={contactsLoading}>
+          {contacts.length === 0 ? (
+            <EmptyState
+              message={contactsLoading ? 'Carregando contatos...' : 'Nenhum contato encontrado.'}
+            />
+          ) : (
+            contacts.map((contact) => (
+              <button
+                className="xwc-conversation"
+                type="button"
+                key={contact.chatGuid}
+                disabled={sending}
+                onClick={() => void selectContact(contact)}
+              >
+                <span className="xwc-contact-avatar" aria-hidden="true">
+                  <MessageCircle size={18} />
+                </span>
+                <span className="xwc-conversation-main">
+                  <span className="xwc-conversation-title">{contact.title}</span>
+                  <span className="xwc-conversation-message">
+                    {getContactDescription(contact, contactType)}
+                  </span>
+                </span>
+              </button>
+            ))
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="xwc-list">
@@ -53,7 +159,7 @@ export function ConversationList() {
             </button>
           </div>
 
-          {tabs.length > 0 && (
+          {tabs.length > 1 && (
             <div className="xwc-tab-tabs" role="tablist" aria-label="Filtros da secao">
               {tabs.map((tab) => (
                 <button
@@ -109,4 +215,54 @@ export function ConversationList() {
       </div>
     </div>
   );
+
+  async function selectContact(contact: ConversationSummary) {
+    await selectConversation(contact);
+    closeNewConversationPicker();
+  }
+}
+
+function getContactDescription(
+  contact: ConversationSummary,
+  contactType: ChatContactType
+): string {
+  const member = contact.members[0];
+
+  if (contactType === 'todos') {
+    return getContactDescriptionForAll(contact);
+  }
+
+  if (contactType === 'whatsapp') {
+    return member?.number || contact.lastMessage || 'Whatsapp';
+  }
+
+  if (contactType === 'instagram') {
+    return member?.externalId || contact.lastMessage || 'Instagram';
+  }
+
+  if (contactType === 'usuarios') {
+    return 'Usuário do sistema';
+  }
+
+  return 'Pessoa';
+}
+
+function getContactDescriptionForAll(contact: ConversationSummary): string {
+  const member = contact.members[0];
+  const memberType = `${member?.type ?? ''}`.toLowerCase();
+  const channel = `${contact.channel ?? ''}`.toLowerCase();
+
+  if (channel === 'whatsapp' || member?.number) {
+    return member?.number || 'Whatsapp';
+  }
+
+  if (channel === 'instagram' || member?.externalId) {
+    return member?.externalId || 'Instagram';
+  }
+
+  if (memberType.includes('usuario')) {
+    return 'Usuário do sistema';
+  }
+
+  return contact.lastMessage || 'Contato';
 }

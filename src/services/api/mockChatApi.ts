@@ -1,8 +1,10 @@
 import type {
     BootstrapResponse,
+    ChatContactType,
     ChatInteractiveList,
     ChatSection,
     ChatMessage,
+    ContactListFilters,
     ConversationListFilters,
     ConversationSummary,
 } from '../../types';
@@ -26,6 +28,13 @@ import {
     mapMessageDtoToChatMessage,
     readDtoValue,
 } from './chatMappers';
+
+const CONTACT_TYPES: Exclude<ChatContactType, 'todos'>[] = [
+    'usuarios',
+    'pessoas',
+    'whatsapp',
+    'instagram',
+];
 
 export class MockChatApi implements IChatApi {
     private conversations: XChannelChatListItemDto[] = [];
@@ -82,9 +91,33 @@ export class MockChatApi implements IChatApi {
 
     async listConversations(filters: ConversationListFilters = {}): Promise<ConversationSummary[]> {
         await delay(180);
-        return this.conversations
-            .filter((conversation) => matchesConversationFilters(conversation, filters))
-            .map(mapChatListItemDtoToConversation);
+        return dedupeConversations(
+            this.conversations
+                .filter((conversation) => matchesConversationFilters(conversation, filters))
+                .map(mapChatListItemDtoToConversation)
+        );
+    }
+
+    async listContacts(filters: ContactListFilters): Promise<ConversationSummary[]> {
+        await delay(180);
+        const contactTypes =
+            filters.contactType === 'todos' ? CONTACT_TYPES : [filters.contactType];
+
+        return dedupeConversations(
+            MOCK_CONTACTS
+                .filter((contact) =>
+                    contactTypes.some((contactType) =>
+                        matchesContactFilters(contact, {
+                            ...filters,
+                            contactType,
+                        })
+                    )
+                )
+                .map((contact) => ({
+                    ...mapChatListItemDtoToConversation(contact),
+                    isVirtual: true,
+                }))
+        );
     }
 
     async createConversation(request: CreateConversationRequest): Promise<ConversationSummary> {
@@ -548,6 +581,17 @@ const MOCK_SECTIONS: ChatSection[] = [
     },
 ];
 
+const MOCK_CONTACTS: XChannelChatListItemDto[] = [
+    createMockContact('usuarios', '201', 'Ana Souza', 'Usuario'),
+    createMockContact('usuarios', '202', 'Bruno Lima', 'Usuario'),
+    createMockContact('usuarios', '203', 'Carla Mendes', 'Usuario'),
+    createMockContact('pessoas', '301', 'Possari', 'Pessoa'),
+    createMockContact('pessoas', '302', 'Helpdesk', 'Pessoa'),
+    createMockContact('whatsapp', '401', 'Cliente WhatsApp', 'Pessoa', '5517996675069'),
+    createMockContact('whatsapp', '402', 'RIOSOFT1', 'Pessoa', '5517999999999'),
+    createMockContact('instagram', '501', 'Lead Instagram', 'Pessoa', '@lead_instagram'),
+];
+
 function matchesConversationFilters(
     conversation: XChannelChatListItemDto,
     filters: ConversationListFilters
@@ -587,6 +631,127 @@ function matchesConversationFilters(
     const lastMessage = readDtoValue<string>(conversation, 'LastMessage') ?? '';
 
     return `${title} ${lastMessage}`.toLowerCase().includes(searchTerm);
+}
+
+function matchesContactFilters(
+    contact: XChannelChatListItemDto,
+    filters: ContactListFilters
+): boolean {
+    const destinations =
+        readDtoValue<XChannelChatDestinationDto[]>(contact, 'Destinations') ?? [];
+    const contactType = filters.contactType;
+    const searchTerm = filters.searchTerm?.trim().toLowerCase();
+    const hasType =
+        contactType === 'todos' ||
+        destinations.some(
+            (destination) => readDtoValue<string>(destination, 'TabGuid') === contactType
+        );
+
+    if (!hasType) {
+        return false;
+    }
+
+    if (!searchTerm) {
+        return true;
+    }
+
+    const title = readDtoValue<string>(contact, 'Title') ?? '';
+    const lastMessage = readDtoValue<string>(contact, 'LastMessage') ?? '';
+
+    return `${title} ${lastMessage}`.toLowerCase().includes(searchTerm);
+}
+
+function dedupeConversations(conversations: ConversationSummary[]): ConversationSummary[] {
+    const byKey = new Map<string, ConversationSummary>();
+
+    for (const conversation of conversations) {
+        const key = getConversationDedupeKey(conversation);
+        const existing = byKey.get(key);
+
+        if (!existing) {
+            byKey.set(key, conversation);
+            continue;
+        }
+
+        byKey.set(key, mergeConversationSummary(existing, conversation));
+    }
+
+    return Array.from(byKey.values());
+}
+
+function getConversationDedupeKey(conversation: ConversationSummary): string {
+    if (conversation.chatGuid) {
+        return `chat:${conversation.chatGuid.toLowerCase()}`;
+    }
+
+    const firstMember = conversation.members[0];
+    return [
+        'virtual',
+        conversation.title.trim().toLowerCase(),
+        `${firstMember?.userChatId ?? ''}`,
+        `${firstMember?.number ?? ''}`.trim().toLowerCase(),
+        `${firstMember?.externalId ?? ''}`.trim().toLowerCase(),
+    ].join(':');
+}
+
+function mergeConversationSummary(
+    current: ConversationSummary,
+    next: ConversationSummary
+): ConversationSummary {
+    return {
+        ...current,
+        ...next,
+        unreadCount: Math.max(current.unreadCount, next.unreadCount),
+        destinations: mergeDestinations(current.destinations, next.destinations),
+        members: next.members.length ? next.members : current.members,
+    };
+}
+
+function mergeDestinations(
+    current: ConversationSummary['destinations'],
+    next: ConversationSummary['destinations']
+): ConversationSummary['destinations'] {
+    const byKey = new Map<string, ConversationSummary['destinations'][number]>();
+
+    for (const destination of [...current, ...next]) {
+        byKey.set(`${destination.sectionGuid ?? ''}:${destination.tabGuid ?? ''}`, destination);
+    }
+
+    return Array.from(byKey.values());
+}
+
+function createMockContact(
+    contactType: ContactListFilters['contactType'],
+    id: string,
+    name: string,
+    type: string,
+    contactInfo = ''
+): XChannelChatListItemDto {
+    const now = new Date().toISOString();
+
+    return {
+        ChatGuid: createGuid(),
+        Title: name,
+        Channel: contactType === 'usuarios' || contactType === 'pessoas' ? 'xchannel' : contactType,
+        Type: 'Individual',
+        Status: 'open',
+        LastMessage: contactInfo,
+        DateLastMessage: now,
+        CreatedAt: now,
+        QuantityUnreadMessages: 0,
+        IsVirtual: true,
+        Destinations: [{ SectionGuid: contactType, TabGuid: contactType }],
+        Members: [
+            {
+                Id: Number(id),
+                UserChatId: Number(id),
+                Name: name,
+                Type: type,
+                Number: contactType === 'whatsapp' ? contactInfo : undefined,
+                ExternalId: contactType === 'instagram' ? contactInfo : undefined,
+            },
+        ],
+    };
 }
 
 function createVirtualUserConversation(id: string, name: string): XChannelChatListItemDto {
