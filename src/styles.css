@@ -178,6 +178,30 @@
     text-align: center;
 }
 
+.xwc-loading {
+    justify-items: center;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.xwc-loading-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    padding: 20px;
+    background: rgba(246, 248, 251, 0.86);
+    backdrop-filter: blur(1px);
+}
+
+.xwc-loading-spinner {
+    width: 34px;
+    height: 34px;
+    border: 3px solid #dce3ed;
+    border-top-color: var(--xwc-theme, #2688c7);
+    border-radius: 999px;
+    animation: xwc-spin 0.8s linear infinite;
+}
+
 .xwc-error strong {
     color: #9f1d35;
 }
@@ -360,7 +384,7 @@
     background: #e8eef6;
 }
 
-.xwc-contact-picker-header + .xwc-contact-filters + .xwc-conversations .xwc-conversation {
+.xwc-contact-picker-header + .xwc-contact-filters + .xwc-conversations-shell .xwc-conversation {
     grid-template-columns: auto minmax(0, 1fr);
 }
 
@@ -482,6 +506,13 @@
     gap: 8px;
     overflow: auto;
     padding: 12px;
+}
+
+.xwc-conversations-shell,
+.xwc-chat-messages-frame {
+    min-height: 0;
+    position: relative;
+    display: grid;
 }
 
 .xwc-conversation {

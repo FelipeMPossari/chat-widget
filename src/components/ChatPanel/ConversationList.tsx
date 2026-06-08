@@ -4,6 +4,7 @@ import { useChat } from '../../hooks/useChat';
 import type { ChatContactType, ConversationSummary } from '../../types';
 import { formatTime } from '../../utils/formatters';
 import { EmptyState } from '../shared/EmptyState';
+import { LoadingState } from '../shared/LoadingState';
 
 const CONTACT_TYPES: { value: ChatContactType; label: string }[] = [
   { value: 'todos', label: 'Todos' },
@@ -93,32 +94,36 @@ export function ConversationList() {
           </div>
         </div>
 
-        <div className="xwc-conversations" aria-busy={contactsLoading}>
-          {contacts.length === 0 ? (
-            <EmptyState
-              message={contactsLoading ? 'Carregando contatos...' : 'Nenhum contato encontrado.'}
-            />
-          ) : (
-            contacts.map((contact) => (
-              <button
-                className="xwc-conversation"
-                type="button"
-                key={contact.chatGuid}
-                disabled={sending}
-                onClick={() => void selectContact(contact)}
-              >
-                <span className="xwc-contact-avatar" aria-hidden="true">
-                  <MessageCircle size={18} />
-                </span>
-                <span className="xwc-conversation-main">
-                  <span className="xwc-conversation-title">{contact.title}</span>
-                  <span className="xwc-conversation-message">
-                    {getContactDescription(contact, contactType)}
+        <div className="xwc-conversations-shell" aria-busy={contactsLoading}>
+          <div className="xwc-conversations">
+            {contacts.length === 0 && !contactsLoading ? (
+              <EmptyState message="Nenhum contato encontrado." />
+            ) : (
+              contacts.map((contact) => (
+                <button
+                  className="xwc-conversation"
+                  type="button"
+                  key={contact.chatGuid}
+                  disabled={sending || contactsLoading}
+                  onClick={() => void selectContact(contact)}
+                >
+                  <span className="xwc-contact-avatar" aria-hidden="true">
+                    <MessageCircle size={18} />
                   </span>
-                </span>
-              </button>
-            ))
-          )}
+                  <span className="xwc-conversation-main">
+                    <span className="xwc-conversation-title">{contact.title}</span>
+                    <span className="xwc-conversation-message">
+                      {getContactDescription(contact, contactType)}
+                    </span>
+                  </span>
+                </button>
+              ))
+            )}
+          </div>
+
+          {contactsLoading ? (
+            <LoadingState variant="overlay" message="Carregando contatos..." />
+          ) : null}
         </div>
       </div>
     );
@@ -181,37 +186,41 @@ export function ConversationList() {
         </div>
       )}
 
-      <div className="xwc-conversations" aria-busy={conversationsLoading}>
-        {conversations.length === 0 ? (
-          <EmptyState
-            message={conversationsLoading ? 'Carregando conversas...' : 'Nenhuma conversa aberta.'}
-          />
-        ) : (
-          conversations.map((conversation) => (
-            <button
-              className="xwc-conversation"
-              type="button"
-              key={conversation.chatGuid}
-              disabled={sending}
-              onClick={() => void selectConversation(conversation)}
-            >
-              <span className="xwc-conversation-main">
-                <span className="xwc-conversation-row">
-                  <span className="xwc-conversation-title">{conversation.title}</span>
-                  <span className="xwc-conversation-time">
-                    {formatTime(conversation.lastMessageAt)}
+      <div className="xwc-conversations-shell" aria-busy={conversationsLoading}>
+        <div className="xwc-conversations">
+          {conversations.length === 0 && !conversationsLoading ? (
+            <EmptyState message="Nenhuma conversa aberta." />
+          ) : (
+            conversations.map((conversation) => (
+              <button
+                className="xwc-conversation"
+                type="button"
+                key={conversation.chatGuid}
+                disabled={sending || conversationsLoading}
+                onClick={() => void selectConversation(conversation)}
+              >
+                <span className="xwc-conversation-main">
+                  <span className="xwc-conversation-row">
+                    <span className="xwc-conversation-title">{conversation.title}</span>
+                    <span className="xwc-conversation-time">
+                      {formatTime(conversation.lastMessageAt)}
+                    </span>
+                  </span>
+                  <span className="xwc-conversation-message">
+                    {conversation.lastMessage || 'Sem mensagens recentes'}
                   </span>
                 </span>
-                <span className="xwc-conversation-message">
-                  {conversation.lastMessage || 'Sem mensagens recentes'}
-                </span>
-              </span>
-              {conversation.unreadCount > 0 && (
-                <span className="xwc-unread-badge">{conversation.unreadCount}</span>
-              )}
-            </button>
-          ))
-        )}
+                {conversation.unreadCount > 0 && (
+                  <span className="xwc-unread-badge">{conversation.unreadCount}</span>
+                )}
+              </button>
+            ))
+          )}
+        </div>
+
+        {conversationsLoading ? (
+          <LoadingState variant="overlay" message="Carregando conversas..." />
+        ) : null}
       </div>
     </div>
   );

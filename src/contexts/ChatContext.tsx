@@ -47,6 +47,7 @@ interface ChatContextValue {
     loading: boolean;
     conversationsLoading: boolean;
     contactsLoading: boolean;
+    messagesLoading: boolean;
     contactPickerOpen: boolean;
     olderMessagesLoading: boolean;
     hasMoreOlderMessages: boolean;
@@ -103,6 +104,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
     const [loading, setLoading] = useState(false);
     const [conversationsLoading, setConversationsLoading] = useState(false);
     const [contactsLoading, setContactsLoading] = useState(false);
+    const [messagesLoading, setMessagesLoading] = useState(false);
     const [contactPickerOpen, setContactPickerOpen] = useState(false);
     const [olderMessagesLoading, setOlderMessagesLoading] = useState(false);
     const [hasMoreOlderMessages, setHasMoreOlderMessages] = useState(false);
@@ -142,12 +144,18 @@ export function ChatProvider({ children }: ChatProviderProps) {
 
     const loadInitialMessages = useCallback(
         async (chatGuid: string) => {
-            const loadedMessages = await api.listMessages(chatGuid, {
-                take: MESSAGE_PAGE_SIZE,
-            });
+            setMessagesLoading(true);
 
-            setMessages(loadedMessages);
-            setHasMoreOlderMessages(loadedMessages.length === MESSAGE_PAGE_SIZE);
+            try {
+                const loadedMessages = await api.listMessages(chatGuid, {
+                    take: MESSAGE_PAGE_SIZE,
+                });
+
+                setMessages(loadedMessages);
+                setHasMoreOlderMessages(loadedMessages.length === MESSAGE_PAGE_SIZE);
+            } finally {
+                setMessagesLoading(false);
+            }
         },
         [api]
     );
@@ -589,6 +597,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
             loading,
             conversationsLoading,
             contactsLoading,
+            messagesLoading,
             contactPickerOpen,
             olderMessagesLoading,
             hasMoreOlderMessages,
@@ -633,6 +642,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
             loadContacts,
             loading,
             messages,
+            messagesLoading,
             olderMessagesLoading,
             sections,
             selectConversation,

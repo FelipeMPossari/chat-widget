@@ -1,6 +1,7 @@
 import { ArrowLeft } from 'lucide-react';
 import { useChat } from '../../hooks/useChat';
 import { MessageList } from '../MessageList/MessageList';
+import { LoadingState } from '../shared/LoadingState';
 import { MessageComposer } from './MessageComposer';
 
 export function ActiveChat() {
@@ -12,6 +13,7 @@ export function ActiveChat() {
         hasMoreOlderMessages,
         loadOlderMessages,
         messages,
+        messagesLoading,
         olderMessagesLoading,
     } = useChat();
 
@@ -34,12 +36,18 @@ export function ActiveChat() {
                 <span className="xwc-chat-name">{activeConversation?.title}</span>
             </div>
 
-            <MessageList
-                messages={messages}
-                hasMoreOlderMessages={hasMoreOlderMessages}
-                olderMessagesLoading={olderMessagesLoading}
-                onLoadOlderMessages={loadOlderMessages}
-            />
+            <div className="xwc-chat-messages-frame" aria-busy={messagesLoading}>
+                <MessageList
+                    messages={messages}
+                    hasMoreOlderMessages={hasMoreOlderMessages}
+                    olderMessagesLoading={olderMessagesLoading}
+                    onLoadOlderMessages={loadOlderMessages}
+                />
+
+                {messagesLoading ? (
+                    <LoadingState variant="overlay" message="Carregando mensagens..." />
+                ) : null}
+            </div>
 
             {error && <div className="xwc-error">{error}</div>}
 
