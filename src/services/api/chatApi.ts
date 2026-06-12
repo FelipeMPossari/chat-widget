@@ -33,6 +33,10 @@ import {
 } from './chatMappers';
 import { MockChatApi } from './mockChatApi';
 
+const DEFAULT_SERVER_ACCESS_TOKEN = [
+    'hazEYeB5QU4958iGd3/4ziQMWlyMcfF8Rp0B4bfmgPwtDBwrVUh5l4HBOEewWpouITwu+zaTVDIFU8hRxGWna40KWAPtU1R1GlL6pn6TfkWlNe2lTLaNQKUw2V0SsZefMVfjr+ir+SqV9sPviNx54rZC72ytV8g/H8hwb25+nZxo59TT85k17RCzzV09gHdlXTT2d++YCFaMmA2IuXH2DPQfMKc/PJs0N7140slRlN/h6au7EQXN8S0P2tQuTSdQD48dR0AwjkFM1zOOEdY/PeleyUmLnmB6jd9ZYaVfpLuMp5qGbXvQO78FrwlaOUanqXsGrPtzJymaxEBxlVhmf8yhR6ncTiqYhkrLCKRaEoELAwBqWpO8FjXd4VKwGXupRm8V0Ip/Yb5vY9bE8Mblizxr8SyxakFTaTxnqE4MVVs=',
+].join('');
+
 export interface IChatApi {
     bootstrap(request: BootstrapRequest): Promise<BootstrapResponse>;
     listSections(): Promise<ChatSection[]>;
@@ -53,13 +57,19 @@ export interface ListMessagesOptions {
 }
 
 export function createChatApi(config: ChatWidgetConfig): IChatApi {
-    const authToken = config.authToken || config.user?.token;
+    const configuredAuthToken = config.authToken || config.user?.token;
+    const authToken = configuredAuthToken || DEFAULT_SERVER_ACCESS_TOKEN;
+    const anonymousAccess = !configuredAuthToken;
 
     if (config.demoMode || !config.apiBaseUrl) {
         return new MockChatApi(authToken);
     }
 
-    return new HttpChatApi(new ApiClient(config.apiBaseUrl, authToken), config.user, authToken);
+    return new HttpChatApi(
+        new ApiClient(config.apiBaseUrl, authToken, anonymousAccess),
+        config.user,
+        authToken
+    );
 }
 
 class HttpChatApi implements IChatApi {

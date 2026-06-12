@@ -119,8 +119,8 @@ export function ChatProvider({ children }: ChatProviderProps) {
         }),
         [bootstrap?.settings]
     );
-    const canUseConversationList =
-        bootstrap?.mode === 'authenticated' || settings.allowMultipleConversations;
+    const isAnonymousAccess = !config.authToken && !config.user?.token;
+    const canUseConversationList = !isAnonymousAccess && bootstrap?.mode === 'authenticated';
 
     const reloadConversations = useCallback(
         async (
@@ -130,6 +130,10 @@ export function ChatProvider({ children }: ChatProviderProps) {
                 tab: selectedTab ?? undefined,
             }
         ) => {
+            if (isAnonymousAccess || bootstrap?.mode !== 'authenticated') {
+                return;
+            }
+
             const list = await api.listConversations(filters);
             setConversations(list);
 
@@ -139,7 +143,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
                 );
             }
         },
-        [api, selectedSection, selectedTab]
+        [api, bootstrap?.mode, isAnonymousAccess, selectedSection, selectedTab]
     );
 
     const loadInitialMessages = useCallback(
@@ -184,7 +188,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
                 ...(response.settings ?? {}),
             };
             const responseAllowsConversationList =
-                response.mode === 'authenticated' || responseSettings.allowMultipleConversations;
+                !isAnonymousAccess && response.mode === 'authenticated';
             let list: ConversationSummary[] = [];
 
             if (responseAllowsConversationList) {
@@ -227,7 +231,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
         } finally {
             setLoading(false);
         }
-    }, [api, bootstrap, config, loadInitialMessages, loading]);
+    }, [api, bootstrap, config, isAnonymousAccess, loadInitialMessages, loading]);
 
     const selectSection = useCallback(
         async (section: ChatSection) => {

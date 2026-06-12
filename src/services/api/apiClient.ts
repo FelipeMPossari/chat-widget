@@ -3,7 +3,8 @@ export class ApiClient {
 
   constructor(
     private readonly apiBaseUrl: string,
-    token = ''
+    token = '',
+    private readonly anonymousAccess = false
   ) {
     this.token = token;
   }
@@ -17,15 +18,21 @@ export class ApiClient {
   }
 
   async post<T>(path: string, body?: unknown): Promise<T> {
+    const requestBody = this.withAnonymousContext(body);
+
     return this.request<T>(path, {
       method: 'POST',
-      body: body == null ? undefined : JSON.stringify(body),
+      body: requestBody == null ? undefined : JSON.stringify(requestBody),
     });
   }
 
   async upload<T>(path: string, file: File): Promise<T> {
     const body = new FormData();
     body.append('file', file, file.name);
+
+    if (this.anonymousAccess) {
+      body.append('ForceAnonymous', 'true');
+    }
 
     return this.request<T>(path, {
       method: 'POST',
@@ -73,6 +80,23 @@ export class ApiClient {
     }
 
     return unwrapApiResponse<T>(await response.json());
+  }
+
+  private withAnonymousContext(body: unknown): unknown {
+    if (
+      !this.anonymousAccess ||
+      body == null ||
+      typeof body !== 'object' ||
+      body instanceof FormData ||
+      Array.isArray(body)
+    ) {
+      return body;
+    }
+
+    return {
+      ...(body as Record<string, unknown>),
+      ForceAnonymous: true,
+    };
   }
 }
 

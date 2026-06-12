@@ -208,14 +208,19 @@
 
 .xwc-start {
     display: grid;
-    gap: 14px;
-    align-content: start;
-    padding: 16px;
+    gap: 18px;
+    align-content: center;
+    justify-items: center;
+    padding: 28px 24px;
 }
 
-.xwc-start-copy {
+.xwc-start-title {
     margin: 0;
-    color: #5b6677;
+    color: #18212f;
+    font-size: 22px;
+    font-weight: 800;
+    line-height: 1.2;
+    text-align: center;
 }
 
 .xwc-field {
